@@ -5,15 +5,39 @@ import sys
 QUERY_URL = "https://jobsearch.api.jobtechdev.se/search"
 OUTFILE = "jobs.txt"
 
-def run_query():
+GEOGRAPHY = [
+    ("region", "01"),           # Stockholm
+    ("municipality", "1980"),   # Västerås
+    ("municipality", "1880"),   # Örebro
+    ("municipality", "0380"),   # Uppsala
+    ("municipality", "0480"),   # Nyköping
+    ("municipality", "0484"),   # Eskilstuna
+    ("municipality", "0580"),   # Linköping
+    ("municipality", "0581"),   # Norrköping
+]
+
+OCCUPATION_GROUPS = [
+    ("occupation-group", "2516"),   # IT-säkerhetsspecialister
+    ("occupation-group", "1335"),   # Driftschefer inom IT
+    ("occupation-group", "2421"),   # Organisations- och systemanalytiker
+    ("occupation-group", "2422"),   # IT-strateger
+]
+
+def fetch(extra_params):
     headers = {"accept": "application/json"}
-    params = {"occupation-group": "2516",   # Yrkesgrupp IT-säkerhetsspecialister
-              "region": "01",               # Region Stockholm
-              "published-after": "1440",    # Last 24 hours (in minutes)
-              "limit": 30}                  # Nice and high limit
+    params = GEOGRAPHY + extra_params + [("published-after", "1440"), ("limit", "50")]
     response = requests.get(QUERY_URL, headers=headers, params=params)
     response.raise_for_status()
-    return response.json()
+    return response.json()["hits"]
+
+def run_query():
+    # Two queries: occupation groups + freetext säkerhetssamordnare, deduplicated by id
+    hits_by_id = {}
+    for hit in fetch(OCCUPATION_GROUPS):
+        hits_by_id[hit["id"]] = hit
+    for hit in fetch([("q", "säkerhetssamordnare")]):
+        hits_by_id[hit["id"]] = hit
+    return list(hits_by_id.values())
 
 def format_hit(item):
     pb_url = item["webpage_url"]
@@ -33,13 +57,12 @@ Annons: {text}"""
     return string
 
 def main():
-    json_response = run_query()
+    hits = run_query()
 
     # If the query returns no jobs, just exit with exit code 1. Otherwise, write the jobs.txt file
-    if json_response["total"]["value"] == 0:
+    if not hits:
         sys.exit(1)
     else:
-        hits = json_response["hits"]
         out_array = []
         for hit in hits:
             out_array.append(format_hit(hit))
