@@ -12,4 +12,4 @@ wheels/
 # Project artifacts
 resume.md
 jobs.txt
-*results.md
+out/
