@@ -5,7 +5,7 @@ set -e
 RESULTS_DIR="${RESULTS_DIR:-$HOME/job-results}"
 
 # Fetch last 24h of job postings
-uv run main.py
+uv run main.py || { echo "No jobs found!"; exit 0; }
 
 # Keyword filter + embedding rerank → ranked markdown
 uv run job_scorer.py --out-dir "$RESULTS_DIR"
