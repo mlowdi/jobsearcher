@@ -19,6 +19,7 @@ Options:
 
 import argparse
 import json
+import re
 import subprocess
 import urllib.error
 import urllib.request
@@ -35,9 +36,32 @@ EMBED_MODEL = "snowflake-arctic-embed-l-v2.0-q4_k_m.gguf"
 
 RESUME_FILE = Path("resume.md")
 JOBS_FILE = Path("jobs.txt")
+STOPWORDS_FILE = Path(__file__).parent / "stopwords-sv.txt"
 
 # Embedding server has a ~2100 char limit per request
 EMBED_MAX_CHARS = 2000
+
+
+# ---------------------------------------------------------------------------
+# Stopword filtering
+# ---------------------------------------------------------------------------
+
+def load_stopwords() -> set:
+    if not STOPWORDS_FILE.exists():
+        return set()
+    return set(STOPWORDS_FILE.read_text(encoding='utf-8').splitlines())
+
+_STOPWORDS: set = load_stopwords()
+
+def strip_stopwords(text: str) -> str:
+    """Remove stopwords from text, preserving word boundaries."""
+    if not _STOPWORDS:
+        return text
+    words = re.split(r'(\s+)', text)
+    return ''.join(
+        w for w in words
+        if w.strip() == '' or w.lower() not in _STOPWORDS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +222,7 @@ def parse_jobs(filepath: Path) -> List[Dict[str, str]]:
             'company': company,
             'url': url,
             'raw_text': block,
-            'text': block.lower(),
+            'text': strip_stopwords(block.lower()),
         })
 
     return jobs
@@ -302,7 +326,7 @@ def main():
         else:
             resume_text = RESUME_FILE.read_text(encoding='utf-8')
             try:
-                resume_vec = get_embedding(resume_text[:EMBED_MAX_CHARS])
+                resume_vec = get_embedding(strip_stopwords(resume_text)[:EMBED_MAX_CHARS])
             except RuntimeError as e:
                 print(f"Warning: {e}\nFalling back to keyword-only scoring.")
                 for job in jobs:
@@ -310,7 +334,7 @@ def main():
                     job['final_score'] = job['kw_score'] / 10.0
             else:
                 for i, job in enumerate(candidates):
-                    snippet = f"{job['headline']}\n{job['raw_text'][:EMBED_MAX_CHARS]}"
+                    snippet = strip_stopwords(f"{job['headline']}\n{job['raw_text']}")[:EMBED_MAX_CHARS]
                     try:
                         job_vec = get_embedding(snippet)
                         job['similarity'] = cosine_similarity(resume_vec, job_vec)
