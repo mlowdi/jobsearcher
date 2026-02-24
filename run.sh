@@ -1,7 +1,16 @@
 #!/usr/bin/bash
+set -e
 
-# Let's just be really clear so Claude understands the assignment
-QUERY="Read the job ads from @jobs.txt and match against my @resume.md. Write a table to [date]-results.md with a suitability rating from 1-10, the headline, company and the URL. Write only the table and nothing else, make sure it contains all the jobs you read from the file and that each one has a rating and URL. Sort the table from highest rating to lowest."
+# Git repo that serves as the remote — clone/pull from this machine to get results
+RESULTS_DIR="${RESULTS_DIR:-$HOME/job-results}"
 
-# Script will exit with exit code 1 if no jobs are returned
-uv run main.py && claude --model haiku --add-dir "$(pwd)" --allowed-tools "Read,Edit,Write" --print "$QUERY" || echo "No jobs found!"
+# Fetch last 24h of job postings
+uv run main.py
+
+# Keyword filter + embedding rerank → ranked markdown
+uv run job_scorer.py --out-dir "$RESULTS_DIR"
+
+# Commit so the new file is reachable via git pull
+cd "$RESULTS_DIR"
+git add -A
+git commit -m "job results $(date +%Y-%m-%d)"
