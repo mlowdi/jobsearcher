@@ -55,38 +55,30 @@ PROFILE_KEYWORDS = {
         "security architect", "säkerhetsarkitekt", "security officer",
         # MSSP/SOC
         "mssp", "soc", "security operations", "soc analyst", "soc manager",
-        # Microsoft stack
-        "microsoft 365", "m365", "microsoft defender", "defender", "sentinel",
-        "entra", "intune", "purview", "microsoft security",
+        # Microsoft stack — use specific product names to avoid Swedish false matches
+        "microsoft 365", "m365", "microsoft defender", "microsoft sentinel",
+        "defender xdr", "microsoft entra", "microsoft intune", "purview",
+        "microsoft security",
         # Tools from resume
         "kql", "powershell", "fortisiem", "sentinelone", "tenable",
         # Incident & compliance
-        "incident", "incidenthantering", "incident management", "incident response",
-        "nis2", "dora", "gdpr", "compliance", "efterlevnad",
+        "incidenthantering", "incident management", "incident response",
+        "nis2", "dora",
         # Role match
         "technical delivery", "delivery manager",
     ],
     "medium": [
-        "risk", "riskhantering", "riskanalys", "risk management",
+        "riskhantering", "riskanalys", "risk management", "risk assessment",
         "säkerhetsincident", "security incident",
-        "hotbild", "threat", "threat intelligence", "underrättelse",
+        "hotbild", "hotbildsanalys", "threat intelligence",
         "säkerhetsstrateg", "säkerhetsstrategi", "security strategy",
         "verksamhetsskydd",
-        "kontinuitet", "continuity", "beredskap", "crisis", "krisberedskap",
+        "krisberedskap", "krishantering", "business continuity",
         "säkerhetspolicy", "security policy",
-        "ledning", "ledarskap", "leadership", "manager", "chef", "lead",
         "zero trust", "xdr", "edr", "siem",
-        "säkerhetsrevision", "audit", "penetrationstest", "penetration testing",
-        "exchange",
-    ],
-    "low": [
-        "strategi", "strategy", "strategisk",
-        "samarbete", "collaboration", "samverkan",
-        "projekt", "project", "projektledning",
-        "kommunikation", "communication",
-        "process", "processutveckling",
-        "kvalitet", "quality",
-        "offentlig sektor", "myndighet", "statlig",
+        "säkerhetsrevision", "penetrationstest", "penetration testing",
+        "gdpr", "compliance", "efterlevnad", "dataskydd",
+        "sentinel", "defender", "entra", "intune",
     ],
 }
 
@@ -104,23 +96,31 @@ NEGATIVE_KEYWORDS = [
 ]
 
 
+# Short keywords that must match as whole words to avoid substring false positives
+# (e.g. "soc" in "associated", "edr" in "pedagogy", "xdr" in random text)
+_WORD_BOUNDARY_KEYWORDS = {"soc", "edr", "xdr", "m365", "kql", "gdpr", "nis2", "dora"}
+
+
+def _keyword_in_text(kw: str, text: str) -> bool:
+    if kw in _WORD_BOUNDARY_KEYWORDS:
+        return bool(re.search(rf"\b{re.escape(kw)}\b", text))
+    return kw in text
+
+
 def score_job_keywords(text: str) -> int:
     """Raw keyword score (not normalised)."""
     text = text.lower()
     score = 0
     for kw in PROFILE_KEYWORDS["high"]:
-        if kw in text:
+        if _keyword_in_text(kw, text):
             score += 3
     for kw in PROFILE_KEYWORDS["medium"]:
-        if kw in text:
+        if _keyword_in_text(kw, text):
             score += 2
-    for kw in PROFILE_KEYWORDS["low"]:
-        if kw in text:
-            score += 1
 
     penalty = 0
     for kw in NEGATIVE_KEYWORDS:
-        if kw in text:
+        if _keyword_in_text(kw, text):
             if "säkerhet" in text or "security" in text:
                 penalty += 1
             else:
