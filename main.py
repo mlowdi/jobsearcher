@@ -1,74 +1,113 @@
-import json
-import requests
+#!/usr/bin/env python3
+"""
+Jobsearcher — single entrypoint.
+
+Fetches job ads from jobtechdev, scores them, stores in SQLite,
+writes ranked results markdown, and commits to git.
+"""
+
 import sys
+from datetime import datetime, date
+from pathlib import Path
 
-QUERY_URL = "https://jobsearch.api.jobtechdev.se/search"
-OUTFILE = "jobs.txt"
+import git
 
-GEOGRAPHY = [
-    ("region", "01"),           # Stockholm
-    ("municipality", "1980"),   # Västerås
-    ("municipality", "1880"),   # Örebro
-    ("municipality", "0380"),   # Uppsala
-    ("municipality", "0480"),   # Nyköping
-    ("municipality", "0484"),   # Eskilstuna
-    ("municipality", "0580"),   # Linköping
-    ("municipality", "0581"),   # Norrköping
-]
+from fetcher import fetch_jobs
+from scorer import score_ads
+from db import init_db, upsert_ads, record_run
 
-OCCUPATION_GROUPS = [
-    ("occupation-group", "2516"),   # IT-säkerhetsspecialister
-    ("occupation-group", "1335"),   # Driftschefer inom IT
-    ("occupation-group", "2421"),   # Organisations- och systemanalytiker
-    ("occupation-group", "2422"),   # IT-strateger
-]
+RESULTS_DIR = Path.home() / "job-results"
 
-def fetch(extra_params):
-    headers = {"accept": "application/json"}
-    params = GEOGRAPHY + extra_params + [("published-after", "1440"), ("limit", "50")]
-    response = requests.get(QUERY_URL, headers=headers, params=params)
-    response.raise_for_status()
-    return response.json()["hits"]
 
-def run_query():
-    # Two queries: occupation groups + freetext säkerhetssamordnare, deduplicated by id
-    hits_by_id = {}
-    for hit in fetch(OCCUPATION_GROUPS):
-        hits_by_id[hit["id"]] = hit
-    for hit in fetch([("q", "säkerhetssamordnare")]):
-        hits_by_id[hit["id"]] = hit
-    return list(hits_by_id.values())
+def log(msg: str) -> None:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-def format_hit(item):
-    pb_url = item["webpage_url"]
-    headline = item["headline"]
-    deadline = item["application_deadline"]
-    text = item["description"]["text"]
-    employer = item["employer"]["name"]
-    employment_type = item["employment_type"]["label"]
-    publish_date = item["publication_date"]
-    string = f"""{headline}
-Företag: {employer}
-Typ: {employment_type}
-Publicerad: {publish_date}
-Deadline: {deadline}
-URL: {pb_url}
-Annons: {text}"""
-    return string
 
-def main():
-    hits = run_query()
+def write_results(ranked: list[dict], embedding_available: bool, output_file: Path) -> None:
+    lines = [f"# Job search results — {date.today()}\n"]
 
-    # If the query returns no jobs, just exit with exit code 1. Otherwise, write the jobs.txt file
-    if not hits:
-        sys.exit(1)
+    if embedding_available:
+        lines.append("Ranked by combined keyword + embedding similarity score.\n")
     else:
-        out_array = []
-        for hit in hits:
-            out_array.append(format_hit(hit))
-        with open(OUTFILE,"w") as f:
-            f.write("\n---\n".join(out_array))
-        sys.exit(0)
+        lines.append("Ranked by keyword score only (embedding unavailable).\n")
+
+    lines += [
+        "| Rank | Headline | Company | KW | Sim | URL |",
+        "|------|----------|---------|-----|-----|-----|",
+    ]
+
+    for i, job in enumerate(ranked, 1):
+        headline = job["headline"].replace("|", "\\|")
+        company = job["employer"].replace("|", "\\|")
+        sim_str = f"{job['similarity']:.3f}" if job["similarity"] is not None else "—"
+        lines.append(f"| {i} | {headline} | {company} | {job['kw_score']} | {sim_str} | {job['webpage_url']} |")
+
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    init_db()
+
+    # Step 1: Fetch
+    log("Fetching jobs from API...")
+    try:
+        ads = fetch_jobs()
+    except Exception as e:
+        log(f"API fetch failed: {e}")
+        record_run(0, 0, False, "failed")
+        return 2
+
+    log(f"Fetched {len(ads)} ads")
+    if not ads:
+        log("No jobs found (may be weekend/holiday)")
+        record_run(0, 0, False, "success")
+        return 0
+
+    # Step 2: Score all ads (store all in DB, take top 8 for output)
+    log("Scoring and ranking...")
+    try:
+        all_scored, embedding_available = score_ads(ads, top_n=20, final_n=len(ads))
+    except Exception as e:
+        log(f"Scoring failed: {e}")
+        record_run(len(ads), 0, False, "failed")
+        return 3
+
+    ranked = all_scored[:8]
+    log(f"Scored {len(all_scored)} ads, top {len(ranked)} for output (embeddings: {'yes' if embedding_available else 'no'})")
+
+    # Step 3: Store in DB
+    new_count = upsert_ads(all_scored)
+    log(f"DB: {new_count} new ads, {len(all_scored) - new_count} updated")
+
+    record_run(len(ads), len(all_scored), embedding_available,
+               "success" if embedding_available else "partial")
+
+    # Step 4: Write results
+    output_file = RESULTS_DIR / f"{date.today().strftime('%Y-%m-%d')}-results.md"
+    write_results(ranked, embedding_available, output_file)
+    log(f"Results written to {output_file}")
+
+    # Print top matches
+    for job in ranked[:5]:
+        sim_str = f", sim={job['similarity']:.3f}" if job["similarity"] is not None else ""
+        log(f"  kw={job['kw_score']}{sim_str} — {job['headline']}")
+
+    # Step 5: Git commit
+    try:
+        repo = git.Repo(RESULTS_DIR)
+        repo.index.add([str(output_file.relative_to(RESULTS_DIR))])
+        if repo.is_dirty() or repo.untracked_files:
+            repo.index.commit(f"job results {date.today().strftime('%Y-%m-%d')}")
+            log("Committed to git")
+        else:
+            log("No changes to commit")
+    except Exception as e:
+        log(f"Git commit failed: {e}")
+        return 4
+
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
