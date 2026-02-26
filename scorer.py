@@ -5,6 +5,7 @@ Accepts raw API ad dicts and returns scored/ranked results.
 """
 
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -13,9 +14,9 @@ from typing import Any
 
 import numpy as np
 
-# Embedding server config
-EMBED_URL = "http://toybox:9090/v1/embeddings"
-EMBED_MODEL = "snowflake-arctic-embed-l-v2.0-q4_k_m.gguf"
+# Embedding server config — override via environment variables
+EMBED_URL = os.getenv("EMBED_URL", "http://localhost:9090/v1/embeddings")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "snowflake-arctic-embed-l-v2.0-q4_k_m.gguf")
 
 RESUME_FILE = Path(__file__).parent / "resume.md"
 STOPWORDS_FILE = Path(__file__).parent / "stopwords-sv.txt"
