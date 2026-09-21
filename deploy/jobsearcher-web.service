@@ -1,0 +1,30 @@
+[Unit]
+Description=Private jobsearcher ranked web workspace
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/jobsearcher
+EnvironmentFile=-%h/projects/jobsearcher/jobsearcher.env
+Environment=PYTHONUNBUFFERED=1
+Environment=JOBSEARCHER_HOST=127.0.0.1
+ExecStart=%h/projects/jobsearcher/.venv/bin/python %h/projects/jobsearcher/web.py --db %h/projects/jobsearcher/jobsearcher.db --host ${JOBSEARCHER_HOST} --port 8080
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=%h/projects/jobsearcher
+
+[Install]
+WantedBy=default.target

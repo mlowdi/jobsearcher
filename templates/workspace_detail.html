@@ -1,0 +1,64 @@
+{% extends "workspace_base.html" %}
+{% block title %}{{ ad['headline'] }} · Jobsearcher{% endblock %}
+{% block content %}
+<p><a href="{{ request.referrer if request.referrer and request.referrer.startswith(request.host_url) else url_for('dashboard') }}">Back</a></p>
+<h1>{{ ad['headline'] }}</h1>
+<p>{{ ad['employer'] }} · {{ ad['municipality'] or ad['region'] }}</p>
+{% if ad['lane'] %}<span class="pill">{{ ad['lane'] }} #{{ ad['lane_rank'] }}</span>{% else %}<span class="pill">not in active snapshot</span>{% endif %}
+<span class="pill">{{ ad['current_state'] }}</span>
+{% set source = safe_source_url(ad['webpage_url']) %}
+{% if source %}<p><a href="{{ source }}" rel="noreferrer">Open original ad</a></p>{% endif %}
+<section class="card">
+<h2>Ad</h2>
+<dl>
+  <dt>ID</dt><dd>{{ ad['id'] }}</dd>
+  <dt>Employment</dt><dd>{{ ad['employment_type'] }}</dd>
+  <dt>Published</dt><dd>{{ ad['publication_date'] }}</dd>
+  <dt>Deadline</dt><dd>{{ ad['application_deadline'] }}</dd>
+  <dt>Location</dt><dd>{{ ad['municipality'] }}, {{ ad['region'] }}</dd>
+  <dt>Occupation</dt><dd>{{ ad['occupation_group'] }}</dd>
+  <dt>Query source</dt><dd>{{ ad['query_source'] }}</dd>
+  <dt>First / last seen</dt><dd>{{ ad['first_seen'] }} / {{ ad['last_seen'] }}</dd>
+  <dt>Keyword raw / score</dt><dd>{{ ad['kw_raw'] }} / {{ ad['kw_score'] }}</dd>
+  <dt>Legacy similarity</dt><dd>{% if ad['similarity'] is not none %}{{ ad['similarity'] }}{% else %}not available{% endif %}</dd>
+  <dt>Stored source final score</dt><dd>{{ ad['final_score'] }}</dd>
+</dl>
+<div class="description">{{ ad['description_text'] }}</div>
+</section>
+<section class="card">
+<h2>Preference score</h2>
+{% if ad['model_version'] %}
+<dl>
+  <dt>Mode / model</dt><dd>{{ ad['scoring_mode'] }} · {{ ad['model_version'] }}</dd>
+  <dt>Ensemble</dt><dd>{{ '%.4f'|format(ad['ensemble_score']) }}</dd>
+  <dt>Component spread</dt><dd>{{ '%.4f'|format(ad['component_spread']) }}</dd>
+  <dt>Title TF-IDF</dt><dd>{{ '%.4f'|format(ad['title_tfidf']) }}</dd>
+  <dt>Full embedding</dt><dd>{% if ad['full_embedding'] is not none %}{{ '%.4f'|format(ad['full_embedding']) }}{% else %}not available{% endif %}</dd>
+  <dt>Title embedding</dt><dd>{% if ad['title_embedding'] is not none %}{{ '%.4f'|format(ad['title_embedding']) }}{% else %}not available{% endif %}</dd>
+  <dt>Source score</dt><dd>{{ '%.4f'|format(ad['source_score']) }}</dd>
+  <dt>Embedding provenance</dt><dd>{{ ad['embedding_provenance'] or 'not used in fallback' }}</dd>
+  <dt>Scored</dt><dd>{{ ad['scored_at'] }}</dd>
+</dl>
+{% else %}<p class="muted">Not preference-scored yet.</p>{% endif %}
+</section>
+<section class="card">
+<h2>Change state</h2>
+<form action="{{ url_for('triage', ad_id=ad['id']) }}" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <label>State <select name="state">{% for state in triage_states %}<option value="{{ state }}"{% if state == ad['current_state'] %} selected{% endif %}>{{ state|title }}</option>{% endfor %}</select></label>
+  <label>Reason code <input name="reason" maxlength="100"></label>
+  <label>Note <textarea name="note" maxlength="5000"></textarea></label>
+  <button type="submit">Append event</button>
+</form>
+</section>
+<section class="card"><h2>History</h2>
+{% if history %}<table><thead><tr><th>Time</th><th>State</th><th>Source</th><th>Reason / note</th></tr></thead><tbody>
+{% for event in history %}<tr><td>{{ event['created_at'] }}</td><td>{{ event['state'] }}</td><td>{{ event['source'] }}</td><td>{{ event['reason_code'] or '' }}{% if event['note'] %}<br>{{ event['note'] }}{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="muted">No events; absence means unread.</p>{% endif %}
+</section>
+<section class="card"><h2>Exact duplicate siblings</h2>
+{% for sibling in siblings %}<p><a href="{{ url_for('ad_detail', ad_id=sibling['id']) }}">{{ sibling['headline'] }}</a> · {{ sibling['employer'] }} <span class="pill">{{ sibling['current_state'] }}</span>{% if sibling['lane'] %}<span class="pill">{{ sibling['lane'] }} #{{ sibling['lane_rank'] }}</span>{% endif %}</p>
+{% else %}<p class="muted">No exact duplicate siblings.</p>{% endfor %}
+</section>
+{% endblock %}

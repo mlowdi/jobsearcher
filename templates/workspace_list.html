@@ -1,0 +1,35 @@
+{% extends "workspace_base.html" %}
+{% block title %}{{ heading }} · Jobsearcher{% endblock %}
+{% block content %}
+<h1>{{ heading }}</h1>
+<p class="muted">{{ total }} result{% if total != 1 %}s{% endif %}</p>
+<form class="filters" method="get">
+  {% if lane %}<label>State
+    <select name="state">
+      {% for value in ('unread','all','saved','dismissed','applied','interview','offer','closed') %}<option value="{{ value }}"{% if value == selected_state %} selected{% endif %}>{{ value|title }}</option>{% endfor %}
+    </select>
+  </label>{% endif %}
+  <label>Sort
+    <select name="sort">
+      {% for value in ('frozen-rank','newest','deadline') %}<option value="{{ value }}"{% if value == selected_sort %} selected{% endif %}>{{ value|replace('-', ' ')|title }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Apply</button>
+</form>
+{% for ad in rows %}
+<article class="card job">
+  <h2><a href="{{ url_for('ad_detail', ad_id=ad['id']) }}">{{ ad['headline'] }}</a></h2>
+  <div>{{ ad['employer'] }} · {{ ad['municipality'] or ad['region'] }}</div>
+  {% if ad['lane'] %}<span class="pill">{{ ad['lane'] }} #{{ ad['lane_rank'] }}</span>{% endif %}
+  <span class="pill">{{ ad['current_state'] }}</span>
+  {% if ad['scoring_mode'] %}<span class="pill score">{{ ad['scoring_mode'] }} {{ '%.3f'|format(ad['ensemble_score']) }}</span>{% endif %}
+  {% if ad['duplicate_count'] and ad['duplicate_count'] > 1 %}<span class="pill">{{ ad['duplicate_count'] }} exact copies</span>{% endif %}
+  <div class="muted">Published {{ ad['publication_date'] }} · deadline {{ ad['application_deadline'] }}</div>
+</article>
+{% else %}<section class="card muted">Nothing in this view.</section>{% endfor %}
+<nav class="pager" aria-label="Pagination">
+  {% if page > 1 %}<a href="?{% if lane %}state={{ selected_state }}&{% endif %}sort={{ selected_sort }}&page={{ page - 1 }}">Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="?{% if lane %}state={{ selected_state }}&{% endif %}sort={{ selected_sort }}&page={{ page + 1 }}">Next</a>{% endif %}
+</nav>
+{% endblock %}

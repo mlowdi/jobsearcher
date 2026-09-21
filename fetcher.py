@@ -48,6 +48,21 @@ def _fetch(extra_params: list[tuple[str, str]], headers: dict | None = None) -> 
     return response.json()["hits"]
 
 
+def _remember_hit(
+    hits_by_id: dict[str, dict[str, Any]],
+    hit: dict[str, Any],
+    query_source: str,
+) -> None:
+    """Keep the freshest hit without losing the first non-blank provenance tag."""
+    previous = hits_by_id.get(str(hit["id"]))
+    tagged = dict(hit)
+    tagged["query_source"] = (
+        previous.get("query_source") if previous and previous.get("query_source")
+        else query_source
+    )
+    hits_by_id[str(hit["id"])] = tagged
+
+
 def fetch_jobs() -> list[dict[str, Any]]:
     """Fetch jobs from all query sources, deduplicated by ad ID.
 
@@ -57,8 +72,7 @@ def fetch_jobs() -> list[dict[str, Any]]:
 
     # 1. Occupation group query (geography-filtered)
     for hit in _fetch(GEOGRAPHY + OCCUPATION_GROUPS):
-        hit["query_source"] = "occupation_group"
-        hits_by_id[hit["id"]] = hit
+        _remember_hit(hits_by_id, hit, "occupation_group")
 
     # 2. Freetext queries (geography-filtered, precise matching)
     freetext_headers = {
@@ -67,15 +81,11 @@ def fetch_jobs() -> list[dict[str, Any]]:
     }
     for query in FREETEXT_QUERIES:
         for hit in _fetch(GEOGRAPHY + [("q", query)], headers=freetext_headers):
-            if hit["id"] not in hits_by_id:
-                hit["query_source"] = f"freetext:{query}"
-            hits_by_id[hit["id"]] = hit
+            _remember_hit(hits_by_id, hit, f"freetext:{query}")
 
     # 3. Remote jobs (no geography filter) — catches nationwide remote positions
     for query in FREETEXT_QUERIES:
         for hit in _fetch([("q", query), ("remote", "true")], headers=freetext_headers):
-            if hit["id"] not in hits_by_id:
-                hit["query_source"] = f"remote:{query}"
-            hits_by_id[hit["id"]] = hit
+            _remember_hit(hits_by_id, hit, f"remote:{query}")
 
     return list(hits_by_id.values())

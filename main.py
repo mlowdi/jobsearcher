@@ -1,112 +1,228 @@
 #!/usr/bin/env python3
-"""
-Jobsearcher — single entrypoint.
+"""One-shot fetch, store, preference-score, duplicate, and lane refresh."""
 
-Fetches job ads from jobtechdev, scores them, stores in SQLite,
-writes ranked results markdown, and commits to git.
-"""
+from __future__ import annotations
 
+import argparse
+import fcntl
+import json
+import os
 import sys
-from datetime import datetime, date
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable, Iterator, Sequence
 
-import git
-
+from db import (
+    DB_PATH,
+    finish_refresh_run,
+    integrate_staged_refresh,
+    migrate,
+    rebuild_duplicates_and_lanes,
+    staged_database,
+    start_refresh_run,
+    upsert_ads,
+)
 from fetcher import fetch_jobs
+from preferences import OpenAIEmbeddingClient, score_active_ads
 from scorer import score_ads
-from db import init_db, upsert_ads, record_run
 
-RESULTS_DIR = Path.home() / "job-results"
-
-
-def log(msg: str) -> None:
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+ROOT = Path(__file__).parent
+DEFAULT_LOCK = ROOT / ".jobsearcher-refresh.lock"
 
 
-def write_results(ranked: list[dict], embedding_available: bool, output_file: Path) -> None:
-    lines = [f"# Job search results — {date.today()}\n"]
-
-    if embedding_available:
-        lines.append("Ranked by combined keyword + embedding similarity score.\n")
-    else:
-        lines.append("Ranked by keyword score only (embedding unavailable).\n")
-
-    lines += [
-        "| Rank | Headline | Company | KW | Sim | URL |",
-        "|------|----------|---------|-----|-----|-----|",
-    ]
-
-    for i, job in enumerate(ranked, 1):
-        headline = job["headline"].replace("|", "\\|")
-        company = job["employer"].replace("|", "\\|")
-        sim_str = f"{job['similarity']:.3f}" if job["similarity"] is not None else "—"
-        lines.append(f"| {i} | {headline} | {company} | {job['kw_score']} | {sim_str} | {job['webpage_url']} |")
-
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+def log(message: str) -> None:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
 
 
-def main() -> int:
-    init_db()
+class RefreshAlreadyRunning(RuntimeError):
+    pass
 
-    # Step 1: Fetch
-    log("Fetching jobs from API...")
+
+@contextmanager
+def advisory_lock(path: str | Path) -> Iterator[None]:
+    """Hold a nonblocking project-local process lock for one refresh."""
+    lock_path = Path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RefreshAlreadyRunning(f"refresh lock is held: {lock_path}") from exc
+        handle.seek(0)
+        handle.truncate()
+        handle.write(str(os.getpid()))
+        handle.flush()
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def run_refresh(
+    args: argparse.Namespace,
+    *,
+    fetch: Callable[[], list[dict[str, Any]]] = fetch_jobs,
+    source_scorer: Callable[..., tuple[list[dict[str, Any]], bool]] = score_ads,
+    preference_scorer: Callable[..., Any] = score_active_ads,
+) -> tuple[int, dict[str, Any]]:
     try:
-        ads = fetch_jobs()
-    except Exception as e:
-        log(f"API fetch failed: {e}")
-        record_run(0, 0, False, "failed")
-        return 2
-
-    log(f"Fetched {len(ads)} ads")
-    if not ads:
-        log("No jobs found (may be weekend/holiday)")
-        record_run(0, 0, False, "success")
-        return 0
-
-    # Step 2: Score all ads (store all in DB, take top 8 for output)
-    log("Scoring and ranking...")
+        lock_context = advisory_lock(args.lock_file)
+        lock_context.__enter__()
+    except RefreshAlreadyRunning as exc:
+        return 75, {"status": "locked", "error": str(exc)}
     try:
-        all_scored, embedding_available = score_ads(ads, top_n=20, final_n=len(ads))
-    except Exception as e:
-        log(f"Scoring failed: {e}")
-        record_run(len(ads), 0, False, "failed")
-        return 3
+        migrate(args.db)
+        run_id = start_refresh_run(args.db, run_type="refresh")
+        counts = {
+            "total_fetched": 0,
+            "total_source_scored": 0,
+            "new_ads": 0,
+            "updated_ads": 0,
+            "preference_scored": 0,
+            "fallback_count": 0,
+            "four_signal_count": 0,
+            "active_count": 0,
+            "canonical_count": 0,
+        }
+        try:
+            log("Fetching JobTech ads")
+            ads = fetch()
+        except Exception as exc:
+            error = f"fetch failed: {exc}"
+            finish_refresh_run(run_id, args.db, status="failure", counts=counts, error=error)
+            return 2, {"run_id": run_id, "status": "failure", "error": error}
+        counts["total_fetched"] = len(ads)
+        source_embedding_available = False
+        try:
+            if ads:
+                scored, source_embedding_available = source_scorer(
+                    ads,
+                    top_n=20,
+                    final_n=len(ads),
+                    use_embeddings=bool(args.source_embeddings),
+                )
+                counts["total_source_scored"] = len(scored)
+            else:
+                scored = []
+                log("No new hits; rebuilding from persistent active corpus")
 
-    ranked = all_scored[:8]
-    log(f"Scored {len(all_scored)} ads, top {len(ranked)} for output (embeddings: {'yes' if embedding_available else 'no'})")
+            endpoint_client = None
+            if args.enable_embedding_endpoint:
+                endpoint_client = OpenAIEmbeddingClient(
+                    url=args.embedding_url,
+                    model=args.embedding_model,
+                    timeout=args.embedding_timeout,
+                    batch_size=args.embedding_batch_size,
+                    token_budget=args.embedding_token_budget,
+                    cache_model_name=f"endpoint:{args.embedding_model}",
+                )
+            with staged_database(args.db) as staged_path:
+                if scored:
+                    counts["new_ads"] = upsert_ads(
+                        scored, staged_path, seen_on=args.active_on
+                    )
+                    counts["updated_ads"] = len(scored) - counts["new_ads"]
+                preference = preference_scorer(
+                    staged_path,
+                    args.model,
+                    active_on=args.active_on,
+                    endpoint_client=endpoint_client,
+                    force=False,
+                    progress=log,
+                )
+                counts["preference_scored"] = preference.scored_count
+                counts["fallback_count"] = preference.fallback_count
+                counts["four_signal_count"] = preference.four_signal_count
+                snapshot = rebuild_duplicates_and_lanes(
+                    staged_path,
+                    scoring_run_id=run_id,
+                    active_on=args.active_on,
+                )
+                counts["active_count"] = int(snapshot["active_count"])
+                counts["canonical_count"] = int(snapshot["canonical_count"])
+                status = (
+                    "partial"
+                    if preference.fallback_count
+                    or preference.endpoint_error
+                    or (bool(ads) and not source_embedding_available)
+                    else "success"
+                )
+                integrate_staged_refresh(
+                    args.db,
+                    staged_path,
+                    run_id=run_id,
+                    status=status,
+                    counts=counts,
+                    source_embedding_available=source_embedding_available,
+                    endpoint_error=preference.endpoint_error,
+                )
+            return 0, {"run_id": run_id, "status": status, **counts,
+                       "endpoint_error": preference.endpoint_error}
+        except Exception as exc:
+            error = f"scoring/storage failed: {exc}"
+            finish_refresh_run(
+                run_id,
+                args.db,
+                status="failure",
+                counts=counts,
+                source_embedding_available=source_embedding_available,
+                error=error[:4000],
+            )
+            return 3, {"run_id": run_id, "status": "failure", "error": error}
+    finally:
+        if "lock_context" in locals():
+            lock_context.__exit__(None, None, None)
 
-    # Step 3: Store in DB
-    new_count = upsert_ads(all_scored)
-    log(f"DB: {new_count} new ads, {len(all_scored) - new_count} updated")
 
-    record_run(len(ads), len(all_scored), embedding_available,
-               "success" if embedding_available else "partial")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", type=Path, default=DB_PATH)
+    parser.add_argument("--model", type=Path, default=ROOT / "models" / "preference.joblib")
+    parser.add_argument("--lock-file", type=Path, default=DEFAULT_LOCK)
+    parser.add_argument("--active-on", help="ISO date override for deterministic operations")
+    parser.add_argument(
+        "--source-embeddings",
+        action="store_true",
+        help="opt in to the legacy resume/source embedding reranker",
+    )
+    parser.add_argument(
+        "--enable-embedding-endpoint",
+        action="store_true",
+        default=os.getenv("PREFERENCE_EMBED_ENABLED", "").lower() in {"1", "true", "yes"},
+    )
+    parser.add_argument(
+        "--embedding-url",
+        default=os.getenv("PREFERENCE_EMBED_URL", "http://127.0.0.1:9090/v1/embeddings"),
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default=os.getenv("PREFERENCE_EMBED_MODEL", "snowflake-arctic-embed-l-v2.0-q4_k_m.gguf"),
+    )
+    parser.add_argument(
+        "--embedding-timeout",
+        type=float,
+        default=float(os.getenv("PREFERENCE_EMBED_TIMEOUT", "10")),
+    )
+    parser.add_argument(
+        "--embedding-batch-size",
+        type=int,
+        default=int(os.getenv("PREFERENCE_EMBED_BATCH_SIZE", "16")),
+    )
+    parser.add_argument(
+        "--embedding-token-budget",
+        type=int,
+        default=int(os.getenv("PREFERENCE_EMBED_TOKEN_BUDGET", "8192")),
+        help="conservative estimated-token budget per llama-server request",
+    )
+    return parser
 
-    # Step 4: Write results
-    output_file = RESULTS_DIR / f"{date.today().strftime('%Y-%m-%d')}-results.md"
-    write_results(ranked, embedding_available, output_file)
-    log(f"Results written to {output_file}")
 
-    # Print top matches
-    for job in ranked[:5]:
-        sim_str = f", sim={job['similarity']:.3f}" if job["similarity"] is not None else ""
-        log(f"  kw={job['kw_score']}{sim_str} — {job['headline']}")
-
-    # Step 5: Git commit
-    try:
-        repo = git.Repo(RESULTS_DIR)
-        repo.index.add([str(output_file.relative_to(RESULTS_DIR))])
-        if repo.is_dirty() or repo.untracked_files:
-            repo.index.commit(f"job results {date.today().strftime('%Y-%m-%d')}")
-            log("Committed to git")
-        else:
-            log("No changes to commit")
-    except Exception as e:
-        log(f"Git commit failed: {e}")
-        return 4
-
-    return 0
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    code, result = run_refresh(args)
+    print(json.dumps(result, sort_keys=True))
+    return code
 
 
 if __name__ == "__main__":

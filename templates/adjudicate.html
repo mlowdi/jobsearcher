@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frozen disagreement adjudicator</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, sans-serif;
+      background: #f2f0ea;
+      color: #1c252c;
+    }
+    body { margin: 0; }
+    main {
+      width: min(1080px, calc(100% - 2rem));
+      margin: 1.5rem auto 4rem;
+    }
+    a { color: #175f88; }
+    .progress {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      color: #56616a;
+      font-size: 0.95rem;
+    }
+    article, .complete {
+      background: white;
+      border: 1px solid #d7d4cb;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgb(0 0 0 / 7%);
+      padding: clamp(1rem, 3vw, 2rem);
+    }
+    h1 { margin: 0 0 0.35rem; line-height: 1.15; }
+    h2 { margin-top: 2rem; }
+    .employer {
+      margin: 0 0 1.25rem;
+      color: #424d55;
+      font-size: 1.15rem;
+    }
+    .selection {
+      border-left: 5px solid #a4502f;
+      background: #fff4eb;
+      margin: 1rem 0 1.5rem;
+      padding: 0.9rem 1rem;
+    }
+    .selection strong, .selection span { display: block; }
+    .selection span { margin-top: 0.35rem; }
+    dl.metadata, dl.signals {
+      display: grid;
+      grid-template-columns: minmax(12rem, max-content) 1fr;
+      gap: 0.4rem 1rem;
+      margin: 0 0 1.5rem;
+    }
+    dt { color: #59646c; font-weight: 650; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .signal-panel {
+      border: 1px solid #cbd9df;
+      border-radius: 9px;
+      background: #f3f8fa;
+      margin: 1.5rem 0;
+      padding: 1rem;
+    }
+    .signal-panel h2 { font-size: 1.1rem; margin: 0 0 0.5rem; }
+    .signal-note {
+      margin: 0 0 1rem;
+      color: #43535d;
+      line-height: 1.4;
+    }
+    .signals { margin-bottom: 0 !important; }
+    .description {
+      white-space: pre-wrap;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+    form {
+      border-top: 1px solid #dedbd3;
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+    }
+    fieldset {
+      border: 1px solid #d7d4cb;
+      border-radius: 8px;
+      margin: 0 0 1.25rem;
+      padding: 1rem;
+    }
+    legend { font-weight: 750; padding: 0 0.35rem; }
+    .hint {
+      color: #59646c;
+      font-size: 0.9rem;
+      margin: 0 0 0.8rem;
+    }
+    .ratings {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+    .rating-option, .reason-option {
+      border: 1px solid #c7cbd0;
+      border-radius: 7px;
+      cursor: pointer;
+      display: block;
+      padding: 0.65rem;
+    }
+    .rating-option:has(input:checked), .reason-option:has(input:checked) {
+      background: #e5f0f5;
+      border-color: #2d6f91;
+    }
+    .rating-option input, .reason-option input { margin-right: 0.35rem; }
+    .rating-option strong {
+      display: block;
+      font-size: 1.2rem;
+      margin-bottom: 0.2rem;
+    }
+    .rating-option span { font-size: 0.82rem; line-height: 1.2; }
+    .reason-groups {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .reason-group { min-width: 0; }
+    .reason-group h3 { font-size: 1rem; margin: 0 0 0.5rem; }
+    .reason-option { margin-bottom: 0.45rem; line-height: 1.25; }
+    .reason-option code {
+      display: block;
+      color: #52616a;
+      font-size: 0.75rem;
+      margin: 0.25rem 0 0 1.35rem;
+      overflow-wrap: anywhere;
+    }
+    textarea {
+      box-sizing: border-box;
+      min-height: 7rem;
+      padding: 0.65rem;
+      resize: vertical;
+      width: 100%;
+    }
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+    }
+    button {
+      border: 1px solid #697781;
+      border-radius: 7px;
+      cursor: pointer;
+      font: inherit;
+      padding: 0.7rem 1rem;
+    }
+    .submit {
+      background: #1f667f;
+      border-color: #1f667f;
+      color: white;
+      font-weight: 700;
+    }
+    .defer { background: #f8f8f6; color: #27343c; }
+    table { border-collapse: collapse; margin: 1rem 0; width: 100%; }
+    th, td {
+      border-bottom: 1px solid #ddd9d0;
+      padding: 0.6rem;
+      text-align: right;
+    }
+    th:first-child, td:first-child { text-align: left; }
+    footer { margin-top: 1rem; text-align: right; font-size: 0.9rem; }
+    @media (max-width: 760px) {
+      .ratings, .reason-groups { grid-template-columns: 1fr; }
+      dl.metadata, dl.signals { grid-template-columns: 1fr; }
+      dd { margin-bottom: 0.4rem; }
+      .actions {
+        align-items: stretch;
+        flex-direction: column-reverse;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="progress">
+      <span><strong>{{ progress.decided }} of {{ progress.total }} adjudicated</strong> in {{ campaign }}</span>
+      <span>{{ progress.remaining }} remaining</span>
+    </div>
+
+    {% if candidate %}
+      <article>
+        <h1>{{ candidate.headline }}</h1>
+        <p class="employer">{{ candidate.employer or "Employer not specified" }}</p>
+
+        <div class="selection">
+          <strong>Lane: {{ candidate.lane }}</strong>
+          <span>{{ candidate.selection_explanation }}</span>
+        </div>
+
+        <dl class="metadata">
+          <dt>Original human rating</dt>
+          <dd><strong>{{ candidate.original_rating }} / 5</strong></dd>
+          <dt>Location</dt>
+          <dd>{{ candidate.location }}</dd>
+          <dt>Deadline</dt>
+          <dd>{{ candidate.application_deadline or "Not specified" }}</dd>
+          <dt>Employment type</dt>
+          <dd>{{ candidate.employment_type or "Not specified" }}</dd>
+          <dt>Published</dt>
+          <dd>{{ candidate.publication_date or "Not specified" }}</dd>
+          <dt>Occupation group</dt>
+          <dd>{{ candidate.occupation_group or "Not specified" }}</dd>
+          <dt>Source URL</dt>
+          <dd>
+            {% if candidate.link_url %}
+              <a href="{{ candidate.link_url }}" target="_blank" rel="noopener noreferrer">{{ candidate.webpage_url }}</a>
+            {% elif candidate.webpage_url %}
+              {{ candidate.webpage_url }}
+            {% else %}
+              Not specified
+            {% endif %}
+          </dd>
+        </dl>
+
+        <section class="signal-panel" aria-labelledby="frozen-signals-heading">
+          <h2 id="frozen-signals-heading">Frozen disagreement signals</h2>
+          <p class="signal-note">
+            These are out-of-fold signals frozen before adjudication. They estimate the operator's prior preference signal for decision support; they are not hiring probabilities, job-quality scores, or offer likelihoods.
+          </p>
+          <dl class="signals">
+            <dt>Stored keyword score</dt>
+            <dd>{{ candidate.keyword_score if candidate.keyword_score is not none else "Not available" }}</dd>
+            <dt>Stored source score</dt>
+            <dd>{{ "%.6f"|format(candidate.source_score) if candidate.source_score is not none else "Not available" }}</dd>
+            <dt>Title TF-IDF component</dt>
+            <dd>{{ "%.6f"|format(candidate.oof_title_tfidf) }}</dd>
+            <dt>Description embedding component</dt>
+            <dd>{{ "%.6f"|format(candidate.oof_embedding_mrl256) }}</dd>
+            <dt>Title embedding component</dt>
+            <dd>{{ "%.6f"|format(candidate.oof_title_embedding) }}</dd>
+            <dt>Four-way ensemble preference probability</dt>
+            <dd><strong>{{ "%.6f"|format(candidate.oof_four_way_ensemble) }}</strong></dd>
+            <dt>Model spread</dt>
+            <dd>{{ "%.6f"|format(candidate.model_spread) }}</dd>
+          </dl>
+
+          <h3>Additional frozen artifact signals</h3>
+          <p class="signal-note">These supporting out-of-fold analysis values are shown when the frozen prediction artifact supplied them.</p>
+          <dl class="signals">
+            <dt>Full-description TF-IDF component</dt>
+            <dd>{{ "%.6f"|format(candidate.oof_full_tfidf) if candidate.oof_full_tfidf is not none else "Not available" }}</dd>
+            <dt>Embedding plus stored-scores component</dt>
+            <dd>{{ "%.6f"|format(candidate.oof_embedding_plus_scores) if candidate.oof_embedding_plus_scores is not none else "Not available" }}</dd>
+            <dt>Centroid component</dt>
+            <dd>{{ "%.6f"|format(candidate.oof_centroid) if candidate.oof_centroid is not none else "Not available" }}</dd>
+            <dt>Prior ensemble preference probability</dt>
+            <dd>{{ "%.6f"|format(candidate.oof_ensemble) if candidate.oof_ensemble is not none else "Not available" }}</dd>
+            <dt>Absolute prior ensemble error</dt>
+            <dd>{{ "%.6f"|format(candidate.absolute_ensemble_error) if candidate.absolute_ensemble_error is not none else "Not available" }}</dd>
+          </dl>
+        </section>
+
+        <h2>Full description</h2>
+        <div class="description">{{ candidate.description_text }}</div>
+
+        <form method="post" action="{{ url_for('decide') }}">
+          <input type="hidden" name="ad_id" value="{{ candidate.ad_id }}">
+
+          <fieldset>
+            <legend>Adjudicated rating (required)</legend>
+            <p class="hint">The original rating is preselected. Keep it to confirm the label, or choose another value to revise it.</p>
+            <div class="ratings">
+              {% for value, label in rating_labels %}
+                <label class="rating-option">
+                  <input type="radio" name="rating" value="{{ value }}" required{% if value == candidate.original_rating %} checked{% endif %}>
+                  <strong>{{ value }}</strong>
+                  <span>{{ label }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Reason tags (one or more required)</legend>
+            <p class="hint">Choose every reason that materially explains the rating. Tags are evidence, not a forced single diagnosis.</p>
+            <div class="reason-groups">
+              {% for group_name, reasons in reason_groups %}
+                <section class="reason-group">
+                  <h3>{{ group_name }}</h3>
+                  {% for code, label in reasons %}
+                    <label class="reason-option">
+                      <input type="checkbox" name="reasons" value="{{ code }}">
+                      {{ label }}
+                      <code>{{ code }}</code>
+                    </label>
+                  {% endfor %}
+                </section>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend><label for="note">Optional note</label></legend>
+            <textarea id="note" name="note" placeholder="What mattered that the structured tags do not capture?"></textarea>
+          </fieldset>
+
+          <div class="actions">
+            <button class="defer" type="submit" formaction="{{ url_for('defer') }}" formnovalidate>Defer this case</button>
+            <button class="submit" type="submit">Save adjudication</button>
+          </div>
+        </form>
+      </article>
+    {% else %}
+      <section class="complete">
+        <h1>Campaign complete</h1>
+        <p>There are no undecided cases left in this frozen campaign.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Lane</th>
+              <th>Total</th>
+              <th>Decided</th>
+              <th>Confirmed</th>
+              <th>Revised</th>
+              <th>Remaining</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for counts in completion %}
+              <tr>
+                <td>{{ counts.lane }}</td>
+                <td>{{ counts.total }}</td>
+                <td>{{ counts.decided }}</td>
+                <td>{{ counts.confirmed }}</td>
+                <td>{{ counts.revised }}</td>
+                <td>{{ counts.remaining }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+
+    <footer><a href="{{ url_for('export_csv') }}">Export every frozen case as CSV</a></footer>
+  </main>
+</body>
+</html>

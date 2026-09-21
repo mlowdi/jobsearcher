@@ -1,0 +1,25 @@
+[Unit]
+Description=One-shot jobsearcher fetch and ranked-lane refresh
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/projects/jobsearcher
+EnvironmentFile=-%h/projects/jobsearcher/jobsearcher.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/projects/jobsearcher/.venv/bin/python %h/projects/jobsearcher/main.py --db %h/projects/jobsearcher/jobsearcher.db --model %h/projects/jobsearcher/models/preference.joblib --source-embeddings
+TimeoutStartSec=4h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=%h/projects/jobsearcher

@@ -1,49 +1,61 @@
 # jobsearcher
 
-Automated job search tool that fetches IT security job postings from [Arbetsförmedlingen's JobTech API](https://data.arbetsformedlingen.se/), scores them against a resume using keyword matching and embedding similarity, and outputs a ranked shortlist.
+Self-hosted, persistent job-search workspace built on JobTech ads and a corrected preference model. A one-shot refresh process owns fetching, source scoring, storage, preference scoring, exact-duplicate grouping, and frozen lane snapshots. A separate server-rendered Flask/Waitress process presents the durable state.
 
-## How it works
+The workspace keeps every active canonical ad in exactly one ranked lane:
 
-`python main.py` runs the full pipeline:
+- **high** — top 50 by ensemble score;
+- **possible** — next 150;
+- **wildcard** — next pool's 50 widest component disagreements;
+- **low** — the complete remaining active corpus.
 
-1. **Fetch** — Queries the jobtechdev API using SSYK occupation groups (IT security specialists, IT managers, system analysts, IT strategists), expanded freetext queries (cybersäkerhet, CISO, SOC manager, etc.), and remote job variants. Ads are deduplicated by ID.
-2. **Score** — Each ad is keyword-scored against a two-tier profile (high-value core security terms at 3 points, medium-value related terms at 2 points) with negative keyword penalties. Short keywords like `soc` and `xdr` use word-boundary matching to avoid substring false positives. The top candidates are then reranked using cosine similarity between ad and resume embeddings (snowflake-arctic-embed via a local inference server). If the embedding server is unavailable, scoring degrades gracefully to keyword-only.
-3. **Store** — All ads and scores are upserted into a SQLite database (`jobsearcher.db`) with `first_seen`/`last_seen` tracking. Run metadata is logged to a `runs` table.
-4. **Output** — A ranked markdown table is written to the results directory.
-5. **Commit** — Results are committed to the results git repo for easy access via `git pull`.
+Exact `(headline, employer)` copies are grouped for navigation, but each ad keeps its own append-only triage history. Scores rank ads; they never set human state or remove low-ranked ads.
 
 ## Setup
 
-```
+```console
 uv sync
+uv run python train_model.py --output models/preference.joblib
+uv run python import_labels.py --db jobsearcher.db
+uv run python rescore.py --db jobsearcher.db --model models/preference.joblib
 ```
 
-Requires a `resume.md` file in the project root (gitignored for privacy). The resume should include a keyword-dense matching preamble for optimal embedding coverage.
+The trainer reads the completed oracle, adjudication, corrected OOF report, and existing NumPy embedding artifacts without modifying them. Missing production embeddings are honest: scoring uses the title-TF-IDF plus stored source-score fallback, with no zero-filled embedding signals.
 
-## Usage
+The repository intentionally excludes personal data and generated state: resumes, job databases, human-rating databases, analysis matrices, trained models, backups, and local environment files. Training therefore requires your own local evidence artifacts; an existing compatible model can instead be placed at `models/preference.joblib`.
 
+## Run
+
+One refresh, with preference endpoint access disabled by default:
+
+```console
+uv run python main.py --db jobsearcher.db --model models/preference.joblib
 ```
-uv run main.py
+
+Private local web process:
+
+```console
+uv run python web.py --db jobsearcher.db --host 127.0.0.1 --port 8080
 ```
 
-Designed to run daily via cron. Set `RESULTS_DIR` to control where output goes (default: `~/job-results`).
+The production server is Waitress, not Flask's development server. The application has no authentication and must only be bound to loopback or a trusted private-network address; it is not suitable for public exposure. Optional local embeddings use an OpenAI-compatible endpoint, defaulting to `http://127.0.0.1:9090/v1/embeddings`, and an 8192-token request budget. Endpoint vectors retain distinct `endpoint:` cache provenance from the training artifact.
 
-## Exit codes
+Refresh exit codes are `0` for a completed success/partial refresh (including a no-hit day), `2` for JobTech fetch failure, `3` for scoring/storage failure, and `75` when another refresh holds the advisory lock. Failure leaves the prior complete lane snapshot readable.
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success (or no jobs found — not an error) |
-| 2 | API fetch failure |
-| 3 | Scoring failure |
-| 4 | Git commit failure |
+## Commands
 
-## Project structure
+- `train_model.py` — deterministic corrected-label production trainer;
+- `import_labels.py` — idempotent corrected oracle/adjudication state import;
+- `cache_embeddings.py` — validated offline full/title cache import;
+- `rescore.py` — cache-only active-corpus rescore and lane freeze;
+- `main.py` — operational one-shot refresh;
+- `web.py` — Waitress workspace server;
+- `oracle.py` and `adjudicate.py` — retained historical evidence tools, not the production UI.
 
-```
-main.py          — CLI entrypoint, orchestration
-fetcher.py       — API queries, returns raw ad dicts
-scorer.py        — Keyword scoring, embedding reranking
-db.py            — SQLite storage (ads + run history)
-resume.md        — Matching reference document (gitignored)
-stopwords-sv.txt — Swedish stopword list for text filtering
+See [OPERATIONS.md](OPERATIONS.md) for initial cutover, cache metadata, deployment, backup, rollback, logs, and retirement of the old cron job. Historical Markdown results and analysis artifacts remain untouched; Markdown generation and git commits are no longer part of the operational refresh.
+
+## Test
+
+```console
+uv run python -m unittest discover -s tests -v
 ```

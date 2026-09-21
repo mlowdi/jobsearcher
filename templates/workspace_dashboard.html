@@ -1,0 +1,27 @@
+{% extends "workspace_base.html" %}
+{% block title %}Dashboard · Jobsearcher{% endblock %}
+{% block content %}
+<h1>Ranked workspace</h1>
+<div class="grid">
+  <section class="card"><div class="muted">Active ads</div><div class="count">{{ active_total }}</div></section>
+  <section class="card"><div class="muted">Active unread</div><div class="count">{{ unread_total }}</div></section>
+  {% for lane, count in lane_counts.items() %}
+  <section class="card"><div class="muted">{{ lane|title }}</div><div class="count">{{ count }}</div><a href="{{ url_for('inbox', lane=lane) }}">Open lane</a></section>
+  {% endfor %}
+</div>
+<h2>Latest refresh</h2>
+<section class="card">
+{% if last_refresh %}
+  <strong>{{ last_refresh['status'] }}</strong> · {{ last_refresh['completed_at'] or last_refresh['started_at'] }}
+  <div class="muted">Fetched {{ last_refresh['total_fetched'] }}, preference-scored {{ last_refresh['preference_scored'] }}, fallback {{ last_refresh['fallback_count'] }}, four-signal {{ last_refresh['four_signal_count'] }}.</div>
+  {% if last_refresh['endpoint_error'] %}<div>Embedding endpoint: {{ last_refresh['endpoint_error'] }}</div>{% endif %}
+  {% if last_refresh['error'] %}<div>Error: {{ last_refresh['error'] }}</div>{% endif %}
+{% else %}<span class="muted">No refresh recorded yet.</span>{% endif %}
+</section>
+<h2>Current states</h2>
+<div class="grid">
+{% for state, count in state_counts.items() %}
+<section class="card"><span class="muted">{{ state|title }}</span><div class="count">{{ count }}</div>{% if state != 'unread' %}<a href="{{ url_for('state_view', state=state) }}">View</a>{% endif %}</section>
+{% endfor %}
+</div>
+{% endblock %}

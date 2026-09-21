@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stored-ad oracle</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, sans-serif;
+      background: #f4f3ef;
+      color: #1d2329;
+    }
+    body {
+      margin: 0;
+    }
+    main {
+      width: min(980px, calc(100% - 2rem));
+      margin: 1.5rem auto 4rem;
+    }
+    .progress {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      color: #56606a;
+      font-size: 0.95rem;
+    }
+    article, .complete {
+      background: white;
+      border: 1px solid #d9d7d0;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgb(0 0 0 / 7%);
+      padding: clamp(1rem, 3vw, 2rem);
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      line-height: 1.15;
+    }
+    .employer {
+      margin: 0 0 1.25rem;
+      color: #424b54;
+      font-size: 1.15rem;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0.35rem 1rem;
+      margin: 0 0 1.5rem;
+    }
+    dt {
+      color: #626b73;
+      font-weight: 600;
+    }
+    dd {
+      margin: 0;
+    }
+    .description {
+      white-space: pre-wrap;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+    .source-link {
+      display: inline-block;
+      margin: 0 0 1.5rem;
+    }
+    form {
+      position: sticky;
+      bottom: 0;
+      background: rgb(255 255 255 / 97%);
+      border-top: 1px solid #dedbd3;
+      margin: 2rem -0.5rem -0.5rem;
+      padding: 1rem 0.5rem 0.5rem;
+    }
+    fieldset {
+      border: 0;
+      margin: 0;
+      padding: 0;
+    }
+    legend {
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    .ratings {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+    button {
+      border: 1px solid #7c8791;
+      border-radius: 8px;
+      background: #f8fafb;
+      color: #18212a;
+      cursor: pointer;
+      min-height: 4.2rem;
+      padding: 0.55rem;
+    }
+    button:hover, button:focus-visible {
+      background: #e7f0f7;
+      border-color: #315d7c;
+    }
+    button strong, button span {
+      display: block;
+    }
+    button strong {
+      font-size: 1.25rem;
+      margin-bottom: 0.2rem;
+    }
+    button span {
+      font-size: 0.8rem;
+      line-height: 1.15;
+    }
+    .skip {
+      display: block;
+      min-height: auto;
+      margin: 0.75rem auto 0;
+      padding: 0.45rem 1rem;
+    }
+    footer {
+      margin-top: 1rem;
+      text-align: right;
+      font-size: 0.9rem;
+    }
+    a {
+      color: #165d8f;
+    }
+    @media (max-width: 700px) {
+      .ratings {
+        grid-template-columns: 1fr;
+      }
+      button {
+        min-height: 3rem;
+        text-align: left;
+      }
+      button strong, button span {
+        display: inline;
+      }
+      button strong {
+        margin-right: 0.5rem;
+      }
+      form {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="progress">
+      <span>{{ progress.rated }} of {{ progress.total }} rated</span>
+      <span>{{ progress.remaining }} remaining</span>
+    </div>
+
+    {% if candidate %}
+      <article>
+        <h1>{{ candidate.headline }}</h1>
+        <p class="employer">{{ candidate.employer or "Employer not specified" }}</p>
+
+        <dl>
+          <dt>Location</dt>
+          <dd>{{ candidate.location }}</dd>
+          <dt>Deadline</dt>
+          <dd>{{ candidate.application_deadline }}</dd>
+          <dt>Employment type</dt>
+          <dd>{{ candidate.employment_type or "Not specified" }}</dd>
+        </dl>
+
+        {% if candidate.webpage_url %}
+          <a class="source-link" href="{{ candidate.webpage_url }}" target="_blank" rel="noopener noreferrer">Open original ad or application page</a>
+        {% endif %}
+
+        <div class="description">{{ candidate.description_text }}</div>
+
+        <form method="post" action="{{ url_for('rate') }}">
+          <input type="hidden" name="ad_id" value="{{ candidate.ad_id }}">
+          <fieldset>
+            <legend>Do I want to look into this?</legend>
+            <div class="ratings">
+              {% for value, label in rating_labels %}
+                <button type="submit" name="rating" value="{{ value }}">
+                  <strong>{{ value }}</strong><span>{{ label }}</span>
+                </button>
+              {% endfor %}
+            </div>
+            <button class="skip" type="submit" name="action" value="skip">Skip for now</button>
+          </fieldset>
+        </form>
+      </article>
+    {% else %}
+      <section class="complete">
+        <h1>Cohort complete</h1>
+        <p>There are no unrated ads left in this cohort.</p>
+      </section>
+    {% endif %}
+
+    <footer><a href="{{ url_for('export_csv') }}">Export cohort CSV</a></footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Jobsearcher{% endblock %}</title>
+  <style>
+    :root { color-scheme: light; --ink:#18211f; --muted:#66716d; --paper:#f4f1e9; --card:#fffdfa; --line:#d8d1c4; --accent:#126a5a; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.5 system-ui,sans-serif; }
+    header { background:#173c35; color:white; padding:.8rem max(1rem,calc((100% - 1100px)/2)); }
+    nav { display:flex; flex-wrap:wrap; gap:.8rem; align-items:center; }
+    nav a { color:white; text-decoration:none; }
+    nav strong { margin-right:.8rem; }
+    main { max-width:1100px; margin:1.5rem auto; padding:0 1rem 3rem; }
+    a { color:var(--accent); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:.5rem; padding:1rem; }
+    .count { font-size:2rem; font-weight:700; margin:.2rem 0; }
+    .muted { color:var(--muted); }
+    .job { margin:.8rem 0; }
+    .job h2 { margin:.1rem 0; font-size:1.15rem; }
+    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:.1rem .5rem; margin:.15rem .2rem .15rem 0; font-size:.85rem; }
+    .score { font-variant-numeric:tabular-nums; }
+    form.filters { display:flex; flex-wrap:wrap; gap:.7rem; align-items:end; margin:1rem 0; }
+    label { display:block; font-weight:600; }
+    select,input,textarea,button { font:inherit; padding:.45rem; }
+    textarea { width:100%; min-height:5rem; }
+    button { border:0; border-radius:.3rem; background:var(--accent); color:white; cursor:pointer; }
+    dl { display:grid; grid-template-columns:minmax(10rem,14rem) 1fr; gap:.35rem 1rem; }
+    dt { font-weight:700; }
+    dd { margin:0; overflow-wrap:anywhere; }
+    .description { white-space:pre-wrap; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { text-align:left; vertical-align:top; border-bottom:1px solid var(--line); padding:.5rem; }
+    .pager { display:flex; gap:1rem; margin-top:1rem; }
+    @media (max-width:600px) { dl { grid-template-columns:1fr; } dd { margin-bottom:.5rem; } }
+  </style>
+</head>
+<body>
+<header><nav>
+  <strong><a href="{{ url_for('dashboard') }}">Jobsearcher</a></strong>
+  {% for nav_lane in lanes %}<a href="{{ url_for('inbox', lane=nav_lane) }}">{{ nav_lane|title }}</a>{% endfor %}
+  {% for nav_state in ('saved','applied','interview','offer','closed','dismissed') %}<a href="{{ url_for('state_view', state=nav_state) }}">{{ nav_state|title }}</a>{% endfor %}
+</nav></header>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

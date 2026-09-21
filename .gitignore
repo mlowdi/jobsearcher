@@ -5,12 +5,31 @@ build/
 dist/
 wheels/
 *.egg-info
+.coverage
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # Virtual environments
 .venv
 
-# Project artifacts
+# Local configuration and runtime state
+.env
+.env.*
+!.env.example
+jobsearcher.env
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+.jobsearcher-refresh.lock
+
+# Private project artifacts
 resume.md
 jobs.txt
-jobsearcher.db
 out/
+jobsearcher-evolution-plan-2026-08-19.md
+/oracle-analysis/
+/models/
+/backups/
