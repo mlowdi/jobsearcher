@@ -44,7 +44,7 @@ Refresh exit codes are `0` for a completed success/partial refresh (including a 
 
 ## Workspace interface
 
-The production workspace uses IBM Carbon-inspired styling: a dark UI shell, Gray 10 surfaces, blue actions, productive typography, ranked job rows, and a responsive navigation menu. The dashboard separates active ads and ranked lanes from all-time human-state counts. Job detail pages keep state updates beside the description, with source metadata, score provenance, append-only history, and duplicate navigation below.
+The production workspace uses IBM Carbon-inspired styling: a dark UI shell, Gray 10 surfaces, blue actions, productive typography, ranked job rows, and a responsive navigation menu. The dashboard separates active ads and ranked lanes from all-time human-state counts. Job detail pages keep state updates beside the description, with source metadata, a compact two-column preference-score table with full provenance, append-only history, and duplicate navigation below.
 
 The interface remains server-rendered and works without JavaScript. CSS and IBM Plex Sans fonts are served locally; there are no CDN requests or frontend build steps. The bundled fonts come from [`@ibm/plex-sans` 1.1.0](https://github.com/IBM/plex) and retain their [SIL Open Font License](static/fonts/OFL.txt). Styling follows [Carbon’s UI shell](https://www.carbondesignsystem.com/building-blocks/core/components/ui-shell-header/specifications) and [productive typography](https://v10.carbondesignsystem.com/guidelines/typography/productive/), without introducing a React dependency.
 

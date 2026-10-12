@@ -104,7 +104,6 @@
   --job-rank-width: 5rem;
   --job-deadline-width: 9rem;
   --detail-aside-width: 18rem;
-  --score-cell-min-width: 9rem;
   --icon-small: 1rem;
   --icon-medium: 1.25rem;
   --icon-large: 2rem;
@@ -979,33 +978,21 @@ section.panel > .helper-text {
   padding-left: var(--space-03);
 }
 
-.score-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--score-cell-min-width)), 1fr));
-  gap: var(--border-width);
-  background: var(--border-subtle);
+.preference-table {
+  table-layout: fixed;
 }
 
-.score-cell {
-  min-width: 0;
-  padding: var(--space-05);
-  background: var(--background-surface);
-}
-
-.score-cell__label,
-.score-cell dt {
-  margin-bottom: var(--space-03);
-  color: var(--text-secondary);
+.preference-table th,
+.preference-table td {
+  padding: var(--space-03) var(--space-05);
   font-size: var(--font-size-label);
-  font-weight: 600;
+  line-height: 1.5;
 }
 
-.score-cell__value,
-.score-cell dd {
-  margin: 0;
-  font-size: var(--font-size-heading-compact);
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+.preference-table th {
+  width: 32%;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .description {
@@ -1049,6 +1036,10 @@ section.panel > .helper-text {
 .disclosure > :not(summary) {
   margin-right: var(--space-06);
   margin-left: var(--space-06);
+}
+
+.disclosure > .table-container {
+  width: auto;
 }
 
 /* Dashboard */
@@ -1580,6 +1571,10 @@ section.panel > .helper-text {
   .disclosure > :not(summary) {
     margin-right: var(--space-05);
     margin-left: var(--space-05);
+  }
+
+  .preference-table th {
+    width: 7.5rem;
   }
 
   .data-table th,

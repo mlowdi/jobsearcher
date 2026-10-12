@@ -127,44 +127,48 @@
       <summary><span class="section-heading">Preference score</span></summary>
       <p class="helper-text">These stored signals estimate fit to this workspace’s learned preference. They are not hiring probabilities or job-quality ratings.</p>
       {% if ad['model_version'] %}
-        <dl class="score-grid">
-          <div class="score-cell">
-            <dt>Mode / model</dt>
-            <dd class="mono">{{ ad['scoring_mode'] }} · {{ ad['model_version'] }}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Ensemble</dt>
-            <dd class="mono">{{ '%.4f'|format(ad['ensemble_score']) }}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Component spread</dt>
-            <dd class="mono">{{ '%.4f'|format(ad['component_spread']) }}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Title TF-IDF</dt>
-            <dd class="mono">{{ '%.4f'|format(ad['title_tfidf']) }}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Full embedding</dt>
-            <dd class="mono">{% if ad['full_embedding'] is not none %}{{ '%.4f'|format(ad['full_embedding']) }}{% else %}Not available{% endif %}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Title embedding</dt>
-            <dd class="mono">{% if ad['title_embedding'] is not none %}{{ '%.4f'|format(ad['title_embedding']) }}{% else %}Not available{% endif %}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Source score</dt>
-            <dd class="mono">{{ '%.4f'|format(ad['source_score']) }}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Embedding provenance</dt>
-            <dd class="mono">{{ ad['embedding_provenance'] or 'Not used in fallback' }}</dd>
-          </div>
-          <div class="score-cell">
-            <dt>Scored</dt>
-            <dd class="mono">{{ ad['scored_at'] }}</dd>
-          </div>
-        </dl>
+        <div class="table-container">
+          <table class="data-table preference-table" aria-label="Preference score">
+            <tbody>
+              <tr>
+                <th scope="row">Mode / model</th>
+                <td class="mono">{{ ad['scoring_mode'] }} · {{ ad['model_version'] }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Ensemble</th>
+                <td class="mono">{{ '%.4f'|format(ad['ensemble_score']) }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Component spread</th>
+                <td class="mono">{{ '%.4f'|format(ad['component_spread']) }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Title TF-IDF</th>
+                <td class="mono">{{ '%.4f'|format(ad['title_tfidf']) }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Full embedding</th>
+                <td class="mono">{% if ad['full_embedding'] is not none %}{{ '%.4f'|format(ad['full_embedding']) }}{% else %}Not available{% endif %}</td>
+              </tr>
+              <tr>
+                <th scope="row">Title embedding</th>
+                <td class="mono">{% if ad['title_embedding'] is not none %}{{ '%.4f'|format(ad['title_embedding']) }}{% else %}Not available{% endif %}</td>
+              </tr>
+              <tr>
+                <th scope="row">Source score</th>
+                <td class="mono">{{ '%.4f'|format(ad['source_score']) }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Embedding provenance</th>
+                <td class="mono">{{ ad['embedding_provenance'] or 'Not used in fallback' }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Scored</th>
+                <td class="mono"><time datetime="{{ ad['scored_at'] }}">{{ ad['scored_at'] }}</time></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       {% else %}
         <div class="empty-state">
           <p>Not preference-scored yet. No stored model signal is available for this ad.</p>
