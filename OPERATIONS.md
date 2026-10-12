@@ -2,13 +2,13 @@
 
 ## Security and ownership assumptions
 
-The web application has no login. Bind it only to loopback or a trusted private-network address; never bind it to a public interface or publish it through a public reverse proxy. The shipped systemd user services run as the current user, keep a restrictive umask, and allow writes only inside `%h/projects/jobsearcher`.
+The web application has no login. Bind it only to loopback or a trusted private-network address; never bind it to a public interface or publish it through a public reverse proxy. The shipped systemd user services run as the current user, keep a restrictive umask, and allow writes only inside `%h/projects/jobsearcher`. Host-specific addresses, accounts, paths, installed system units, and environment files stay on the server; do not commit them.
 
 Oracle/adjudication databases, corrected analysis files, embedding training matrices, and OOF reports are evidence inputs. All production commands open those inputs read-only. Back them up, do not move the defaults mid-campaign, and never point a writable workspace command at them.
 
 ## Initial cutover
 
-The service templates assume the checkout is at `$HOME/projects/jobsearcher`. If it is elsewhere, update the `%h/projects/jobsearcher` paths before installing the units. Run from the repository root:
+The service templates assume the checkout is at `$HOME/projects/jobsearcher`. If it is elsewhere, update the `%h/projects/jobsearcher` paths in the locally installed units. Run from the repository root:
 
 ```console
 uv sync --frozen
@@ -106,7 +106,7 @@ Open `http://127.0.0.1:8080/`, then exercise dashboard → high lane → detail 
 
 ## systemd user-service deployment
 
-The repository only ships templates. The parent operator owns installation and cutover:
+The repository ships portable user-service templates. Install and customize them locally:
 
 ```console
 install -d "$HOME/.config/systemd/user"
@@ -120,7 +120,33 @@ systemctl --user status jobsearcher-web.service jobsearcher-refresh.timer
 systemctl --user list-timers jobsearcher-refresh.timer
 ```
 
-The timer runs at 07:00, is persistent across downtime, and adds up to five minutes of randomized delay. Do not enable these units until the model, initial import/rescore, private bind, and web flow have been verified. To run the user units before login after a reboot, enable lingering for the service account with `loginctl enable-linger "$USER"`.
+The timer runs at 07:00, is persistent across downtime, and adds up to five minutes of randomized delay. Do not enable these units until the model, initial import/rescore, private bind, and web flow have been verified. To start user units before login after reboot, enable lingering with `loginctl enable-linger "$USER"`.
+
+An existing deployment may instead use administrator-installed system units in `/etc/systemd/system/`. Keep those host-specific units local and use `sudo systemctl` and `sudo journalctl` without `--user`. Do not replace a working system installation with the user-service templates during a UI-only deployment.
+
+## Change, test, push, pull, restart
+
+GitHub `origin/dev-v2` is the source of truth. Development and deployment checkouts track that branch. Do not copy source files onto the server or edit its tracked files in place.
+
+After changing and verifying locally:
+
+```console
+git add <changed-files>
+git commit -m "Describe the change"
+git push origin dev-v2
+```
+
+From the server checkout:
+
+```console
+git status --short                 # must be clean; investigate drift instead of overwriting it
+git pull --ff-only origin dev-v2
+uv sync --frozen
+systemctl --user restart jobsearcher-web.service
+systemctl --user status jobsearcher-web.service --no-pager
+```
+
+For an existing system-service deployment, replace the last two commands with `sudo systemctl restart jobsearcher-web.service` and `sudo systemctl status jobsearcher-web.service --no-pager`. Verify the configured private URL in a browser. UI-only deployment does not require fetching, rescoring, retraining, or restarting the refresh timer. Keep `jobsearcher.env`, databases, `models/`, `import/`, and backups local and gitignored. Before reconciling an unmanaged checkout, preserve its source and make an online SQLite backup under `backups/`; never discard unexplained server changes.
 
 ## Logging and health
 
