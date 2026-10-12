@@ -1,64 +1,242 @@
 {% extends "workspace_base.html" %}
 {% block title %}{{ ad['headline'] }} · Jobsearcher{% endblock %}
 {% block content %}
-<p><a href="{{ request.referrer if request.referrer and request.referrer.startswith(request.host_url) else url_for('dashboard') }}">Back</a></p>
-<h1>{{ ad['headline'] }}</h1>
-<p>{{ ad['employer'] }} · {{ ad['municipality'] or ad['region'] }}</p>
-{% if ad['lane'] %}<span class="pill">{{ ad['lane'] }} #{{ ad['lane_rank'] }}</span>{% else %}<span class="pill">not in active snapshot</span>{% endif %}
-<span class="pill">{{ ad['current_state'] }}</span>
+{% set back_url = request.referrer if request.referrer and request.referrer.startswith(request.host_url) else url_for('dashboard') %}
 {% set source = safe_source_url(ad['webpage_url']) %}
-{% if source %}<p><a href="{{ source }}" rel="noreferrer">Open original ad</a></p>{% endif %}
-<section class="card">
-<h2>Ad</h2>
-<dl>
-  <dt>ID</dt><dd>{{ ad['id'] }}</dd>
-  <dt>Employment</dt><dd>{{ ad['employment_type'] }}</dd>
-  <dt>Published</dt><dd>{{ ad['publication_date'] }}</dd>
-  <dt>Deadline</dt><dd>{{ ad['application_deadline'] }}</dd>
-  <dt>Location</dt><dd>{{ ad['municipality'] }}, {{ ad['region'] }}</dd>
-  <dt>Occupation</dt><dd>{{ ad['occupation_group'] }}</dd>
-  <dt>Query source</dt><dd>{{ ad['query_source'] }}</dd>
-  <dt>First / last seen</dt><dd>{{ ad['first_seen'] }} / {{ ad['last_seen'] }}</dd>
-  <dt>Keyword raw / score</dt><dd>{{ ad['kw_raw'] }} / {{ ad['kw_score'] }}</dd>
-  <dt>Legacy similarity</dt><dd>{% if ad['similarity'] is not none %}{{ ad['similarity'] }}{% else %}not available{% endif %}</dd>
-  <dt>Stored source final score</dt><dd>{{ ad['final_score'] }}</dd>
-</dl>
-<div class="description">{{ ad['description_text'] }}</div>
-</section>
-<section class="card">
-<h2>Preference score</h2>
-{% if ad['model_version'] %}
-<dl>
-  <dt>Mode / model</dt><dd>{{ ad['scoring_mode'] }} · {{ ad['model_version'] }}</dd>
-  <dt>Ensemble</dt><dd>{{ '%.4f'|format(ad['ensemble_score']) }}</dd>
-  <dt>Component spread</dt><dd>{{ '%.4f'|format(ad['component_spread']) }}</dd>
-  <dt>Title TF-IDF</dt><dd>{{ '%.4f'|format(ad['title_tfidf']) }}</dd>
-  <dt>Full embedding</dt><dd>{% if ad['full_embedding'] is not none %}{{ '%.4f'|format(ad['full_embedding']) }}{% else %}not available{% endif %}</dd>
-  <dt>Title embedding</dt><dd>{% if ad['title_embedding'] is not none %}{{ '%.4f'|format(ad['title_embedding']) }}{% else %}not available{% endif %}</dd>
-  <dt>Source score</dt><dd>{{ '%.4f'|format(ad['source_score']) }}</dd>
-  <dt>Embedding provenance</dt><dd>{{ ad['embedding_provenance'] or 'not used in fallback' }}</dd>
-  <dt>Scored</dt><dd>{{ ad['scored_at'] }}</dd>
-</dl>
-{% else %}<p class="muted">Not preference-scored yet.</p>{% endif %}
-</section>
-<section class="card">
-<h2>Change state</h2>
-<form action="{{ url_for('triage', ad_id=ad['id']) }}" method="post">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <input type="hidden" name="next" value="{{ request.full_path }}">
-  <label>State <select name="state">{% for state in triage_states %}<option value="{{ state }}"{% if state == ad['current_state'] %} selected{% endif %}>{{ state|title }}</option>{% endfor %}</select></label>
-  <label>Reason code <input name="reason" maxlength="100"></label>
-  <label>Note <textarea name="note" maxlength="5000"></textarea></label>
-  <button type="submit">Append event</button>
-</form>
-</section>
-<section class="card"><h2>History</h2>
-{% if history %}<table><thead><tr><th>Time</th><th>State</th><th>Source</th><th>Reason / note</th></tr></thead><tbody>
-{% for event in history %}<tr><td>{{ event['created_at'] }}</td><td>{{ event['state'] }}</td><td>{{ event['source'] }}</td><td>{{ event['reason_code'] or '' }}{% if event['note'] %}<br>{{ event['note'] }}{% endif %}</td></tr>{% endfor %}
-</tbody></table>{% else %}<p class="muted">No events; absence means unread.</p>{% endif %}
-</section>
-<section class="card"><h2>Exact duplicate siblings</h2>
-{% for sibling in siblings %}<p><a href="{{ url_for('ad_detail', ad_id=sibling['id']) }}">{{ sibling['headline'] }}</a> · {{ sibling['employer'] }} <span class="pill">{{ sibling['current_state'] }}</span>{% if sibling['lane'] %}<span class="pill">{{ sibling['lane'] }} #{{ sibling['lane_rank'] }}</span>{% endif %}</p>
-{% else %}<p class="muted">No exact duplicate siblings.</p>{% endfor %}
-</section>
+
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a class="inline-link" href="{{ back_url }}">Back to workspace</a>
+</nav>
+
+<header class="page-header">
+  <p class="eyebrow">Job detail</p>
+  <h1>{{ ad['headline'] or 'Untitled job' }}</h1>
+  <p class="page-intro">
+    <strong>{{ ad['employer'] or 'Employer not specified' }}</strong>
+    {% if ad['municipality'] or ad['region'] %}
+      <span aria-hidden="true"> · </span>{{ ad['municipality'] or ad['region'] }}
+    {% endif %}
+  </p>
+  <div class="job-meta" aria-label="Current ranking and state">
+    {% if ad['lane'] %}
+      <span class="tag tag--lane">{{ ad['lane']|title }} lane · rank #{{ ad['lane_rank'] }}</span>
+    {% else %}
+      <span class="tag tag--lane">Not in active snapshot</span>
+    {% endif %}
+    <span class="tag tag--state">{{ ad['current_state']|title }}</span>
+  </div>
+  {% if source %}
+    <p><a class="button button--secondary" href="{{ source }}" rel="noreferrer">Open original ad</a></p>
+  {% endif %}
+</header>
+
+<div class="detail-layout">
+  <aside class="detail-aside" aria-label="Job actions">
+    <section class="panel" aria-labelledby="triage-heading">
+      <p class="eyebrow">Current state: {{ ad['current_state']|title }}</p>
+      <h2 class="panel-heading" id="triage-heading">Update state</h2>
+      <p class="helper-text" id="triage-help">Saving appends a new event to the job history. A reason and note are optional.</p>
+      <form class="triage-form" action="{{ url_for('triage', ad_id=ad['id']) }}" method="post" aria-describedby="triage-help">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+
+        <div class="field">
+          <label for="triage-state">State</label>
+          <select id="triage-state" name="state">
+            {% for state in triage_states %}
+              <option value="{{ state }}"{% if state == ad['current_state'] %} selected{% endif %}>{{ state|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="triage-reason">Reason code</label>
+          <input id="triage-reason" name="reason" maxlength="100">
+          <p class="helper-text">Optional · up to 100 characters</p>
+        </div>
+
+        <div class="field">
+          <label for="triage-note">Note</label>
+          <textarea id="triage-note" name="note" maxlength="5000" rows="6"></textarea>
+          <p class="helper-text">Optional · up to 5,000 characters</p>
+        </div>
+
+        <button class="button button--primary" type="submit">Save state</button>
+      </form>
+    </section>
+  </aside>
+
+  <div class="detail-main">
+    <section class="panel" aria-labelledby="description-heading">
+      <h2 class="panel-heading" id="description-heading">Job description</h2>
+      {% if ad['description_text'] %}
+        <div class="description">{{ ad['description_text'] }}</div>
+      {% else %}
+        <div class="empty-state">
+          <p>No description was included with this stored ad.</p>
+          {% if source %}<a class="inline-link" href="{{ source }}" rel="noreferrer">Check the original ad</a>{% endif %}
+        </div>
+      {% endif %}
+    </section>
+
+    <details class="panel disclosure" open>
+      <summary><span class="section-heading">Job metadata</span></summary>
+      <dl class="detail-facts">
+        <dt>ID</dt>
+        <dd class="mono">{{ ad['id'] }}</dd>
+
+        <dt>Employment</dt>
+        <dd>{{ ad['employment_type'] or 'Not specified' }}</dd>
+
+        <dt>Published</dt>
+        <dd>{% if ad['publication_date'] %}<time datetime="{{ ad['publication_date'] }}">{{ ad['publication_date'] }}</time>{% else %}Not specified{% endif %}</dd>
+
+        <dt>Deadline</dt>
+        <dd>{% if ad['application_deadline'] %}<time datetime="{{ ad['application_deadline'] }}">{{ ad['application_deadline'] }}</time>{% else %}Not specified{% endif %}</dd>
+
+        <dt>Location</dt>
+        <dd>
+          {% if ad['municipality'] or ad['region'] %}
+            {{ ad['municipality'] or '' }}{% if ad['municipality'] and ad['region'] %}, {% endif %}{{ ad['region'] or '' }}
+          {% else %}
+            Not specified
+          {% endif %}
+        </dd>
+
+        <dt>Occupation</dt>
+        <dd>{{ ad['occupation_group'] or 'Not specified' }}</dd>
+
+        <dt>Query source</dt>
+        <dd class="mono">{{ ad['query_source'] or 'Not specified' }}</dd>
+
+        <dt>First / last seen</dt>
+        <dd class="mono">{{ ad['first_seen'] or 'Not specified' }} / {{ ad['last_seen'] or 'Not specified' }}</dd>
+
+        <dt>Keyword raw / score</dt>
+        <dd class="mono">{% if ad['kw_raw'] is not none %}{{ ad['kw_raw'] }}{% else %}Not available{% endif %} / {% if ad['kw_score'] is not none %}{{ ad['kw_score'] }}{% else %}Not available{% endif %}</dd>
+
+        <dt>Legacy similarity</dt>
+        <dd class="mono">{% if ad['similarity'] is not none %}{{ ad['similarity'] }}{% else %}Not available{% endif %}</dd>
+
+        <dt>Stored source final score</dt>
+        <dd class="mono">{% if ad['final_score'] is not none %}{{ ad['final_score'] }}{% else %}Not available{% endif %}</dd>
+      </dl>
+    </details>
+
+    <details class="panel disclosure" open>
+      <summary><span class="section-heading">Preference score</span></summary>
+      <p class="helper-text">These stored signals estimate fit to this workspace’s learned preference. They are not hiring probabilities or job-quality ratings.</p>
+      {% if ad['model_version'] %}
+        <dl class="score-grid">
+          <div class="score-cell">
+            <dt>Mode / model</dt>
+            <dd class="mono">{{ ad['scoring_mode'] }} · {{ ad['model_version'] }}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Ensemble</dt>
+            <dd class="mono">{{ '%.4f'|format(ad['ensemble_score']) }}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Component spread</dt>
+            <dd class="mono">{{ '%.4f'|format(ad['component_spread']) }}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Title TF-IDF</dt>
+            <dd class="mono">{{ '%.4f'|format(ad['title_tfidf']) }}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Full embedding</dt>
+            <dd class="mono">{% if ad['full_embedding'] is not none %}{{ '%.4f'|format(ad['full_embedding']) }}{% else %}Not available{% endif %}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Title embedding</dt>
+            <dd class="mono">{% if ad['title_embedding'] is not none %}{{ '%.4f'|format(ad['title_embedding']) }}{% else %}Not available{% endif %}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Source score</dt>
+            <dd class="mono">{{ '%.4f'|format(ad['source_score']) }}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Embedding provenance</dt>
+            <dd class="mono">{{ ad['embedding_provenance'] or 'Not used in fallback' }}</dd>
+          </div>
+          <div class="score-cell">
+            <dt>Scored</dt>
+            <dd class="mono">{{ ad['scored_at'] }}</dd>
+          </div>
+        </dl>
+      {% else %}
+        <div class="empty-state">
+          <p>Not preference-scored yet. No stored model signal is available for this ad.</p>
+        </div>
+      {% endif %}
+    </details>
+
+    <section class="panel" aria-labelledby="history-heading">
+      <h2 class="panel-heading" id="history-heading">State history</h2>
+      {% if history %}
+        <div class="table-container">
+          <table class="data-table history-table">
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">State</th>
+                <th scope="col">Source</th>
+                <th scope="col">Reason / note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for event in history %}
+                <tr>
+                  <td class="mono"><time datetime="{{ event['created_at'] }}">{{ event['created_at'] }}</time></td>
+                  <td><span class="tag tag--state">{{ event['state']|title }}</span></td>
+                  <td class="mono">{{ event['source'] }}</td>
+                  <td>
+                    {% if event['reason_code'] %}<span class="mono">{{ event['reason_code'] }}</span>{% endif %}
+                    {% if event['note'] %}{% if event['reason_code'] %}<br>{% endif %}{{ event['note'] }}{% endif %}
+                    {% if not event['reason_code'] and not event['note'] %}<span class="muted">—</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>No events yet; absence means this job is unread.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="panel" aria-labelledby="duplicates-heading">
+      <h2 class="panel-heading" id="duplicates-heading">Exact duplicate siblings</h2>
+      {% if siblings %}
+        <p class="helper-text">These stored ads share an exact duplicate group. Each copy keeps its own state and history.</p>
+        <div class="job-list">
+          {% for sibling in siblings %}
+            <article class="job-row">
+              <div class="job-rank">
+                <span class="eyebrow">Rank</span>
+                {% if sibling['lane'] %}<strong>#{{ sibling['lane_rank'] }}</strong>{% else %}<span class="muted">Not ranked</span>{% endif %}
+              </div>
+              <div class="job-main">
+                <h3 class="job-title"><a href="{{ url_for('ad_detail', ad_id=sibling['id']) }}">{{ sibling['headline'] or 'Untitled job' }}</a></h3>
+                <p class="job-meta"><strong>{{ sibling['employer'] or 'Employer not specified' }}</strong></p>
+                {% if sibling['lane'] %}<span class="tag tag--lane">{{ sibling['lane']|title }} lane</span>{% endif %}
+              </div>
+              <div class="job-deadline">
+                <span class="eyebrow">Current state</span>
+                <span class="tag tag--state">{{ sibling['current_state']|title }}</span>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>No exact duplicate siblings.</p>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
 {% endblock %}

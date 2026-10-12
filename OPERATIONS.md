@@ -102,7 +102,7 @@ The importer changes only `embedding_cache`; rescore never fetches JobTech or ca
 uv run python web.py --db jobsearcher.db --host 127.0.0.1 --port 8080
 ```
 
-Open `http://127.0.0.1:8080/`, then exercise dashboard → high lane → detail → save with a note → saved view → duplicate sibling → low lane. Confirm the event appears in history and that the sibling remains independently unread. The application uses Waitress, strict SameSite session cookies, per-session CSRF tokens, autoescaping, and short SQLite write transactions.
+Open `http://127.0.0.1:8080/`, then exercise overview → high lane → detail → Save state with a note → saved view → duplicate sibling → low lane. Confirm the event appears in history and that the sibling remains independently unread. Verify state/sort filters, pagination, expired saved jobs, metadata disclosures, and an empty state view. Check the interface at desktop and narrow mobile widths, including keyboard operation of the native Menu control and visible focus states. For write verification, use an online database backup rather than adding smoke-test events to production history. CSS and fonts are local assets; no frontend build or external asset service is required. The application uses Waitress, strict SameSite session cookies, per-session CSRF tokens, autoescaping, and short SQLite write transactions.
 
 ## systemd user-service deployment
 

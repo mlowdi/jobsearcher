@@ -1,27 +1,147 @@
 {% extends "workspace_base.html" %}
-{% block title %}Dashboard · Jobsearcher{% endblock %}
+{% block title %}Overview · Jobsearcher{% endblock %}
 {% block content %}
-<h1>Ranked workspace</h1>
-<div class="grid">
-  <section class="card"><div class="muted">Active ads</div><div class="count">{{ active_total }}</div></section>
-  <section class="card"><div class="muted">Active unread</div><div class="count">{{ unread_total }}</div></section>
-  {% for lane, count in lane_counts.items() %}
-  <section class="card"><div class="muted">{{ lane|title }}</div><div class="count">{{ count }}</div><a href="{{ url_for('inbox', lane=lane) }}">Open lane</a></section>
-  {% endfor %}
-</div>
-<h2>Latest refresh</h2>
-<section class="card">
-{% if last_refresh %}
-  <strong>{{ last_refresh['status'] }}</strong> · {{ last_refresh['completed_at'] or last_refresh['started_at'] }}
-  <div class="muted">Fetched {{ last_refresh['total_fetched'] }}, preference-scored {{ last_refresh['preference_scored'] }}, fallback {{ last_refresh['fallback_count'] }}, four-signal {{ last_refresh['four_signal_count'] }}.</div>
-  {% if last_refresh['endpoint_error'] %}<div>Embedding endpoint: {{ last_refresh['endpoint_error'] }}</div>{% endif %}
-  {% if last_refresh['error'] %}<div>Error: {{ last_refresh['error'] }}</div>{% endif %}
-{% else %}<span class="muted">No refresh recorded yet.</span>{% endif %}
+<header class="page-header">
+  <p class="eyebrow">Workspace overview</p>
+  <h1>Ranked job workspace</h1>
+  <p class="page-intro">Review the active ranking snapshot, then move promising jobs through your human pipeline.</p>
+</header>
+
+<section class="dashboard-section" aria-labelledby="active-overview-heading">
+  <div class="section-heading">
+    <div>
+      <h2 id="active-overview-heading">Active overview</h2>
+      <p>Application deadlines that have not passed.</p>
+    </div>
+  </div>
+  <div class="overview-metrics">
+    <article class="metric-tile">
+      <p class="metric-tile__label">Active ads</p>
+      <p class="metric-tile__value">{{ active_total }}</p>
+      <p class="metric-tile__context">All stored ads with an active deadline.</p>
+    </article>
+    <article class="metric-tile">
+      <p class="metric-tile__label">Active unread</p>
+      <p class="metric-tile__value">{{ unread_total }}</p>
+      <p class="metric-tile__context">Active ads whose current state is unread.</p>
+    </article>
+  </div>
 </section>
-<h2>Current states</h2>
-<div class="grid">
-{% for state, count in state_counts.items() %}
-<section class="card"><span class="muted">{{ state|title }}</span><div class="count">{{ count }}</div>{% if state != 'unread' %}<a href="{{ url_for('state_view', state=state) }}">View</a>{% endif %}</section>
-{% endfor %}
-</div>
+
+<section class="dashboard-section" aria-labelledby="ranked-lanes-heading">
+  <div class="section-heading">
+    <div>
+      <h2 id="ranked-lanes-heading">Ranked lanes</h2>
+      <p>Counts are active ads in the current canonical ranking snapshot.</p>
+    </div>
+  </div>
+  <div class="lane-grid">
+    {% for lane, count in lane_counts.items() %}
+      <a class="lane-tile lane-tile--{{ lane }}" href="{{ url_for('inbox', lane=lane) }}" aria-describedby="lane-{{ lane }}-description">
+        <div class="lane-tile__heading">
+          <h3>{{ lane|title }}</h3>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m9.3 2.3 5 5a1 1 0 0 1 0 1.4l-5 5-.7-.7 4.5-4.5H2v-1h11.1L8.6 3l.7-.7Z"/></svg>
+        </div>
+        <p class="lane-tile__count">{{ count }}</p>
+        <p class="lane-tile__unit">active ad{% if count != 1 %}s{% endif %}</p>
+        <p class="lane-tile__description" id="lane-{{ lane }}-description">
+          {% if lane == 'high' %}Top 50 by preference score.
+          {% elif lane == 'possible' %}Next 150 by preference score.
+          {% elif lane == 'wildcard' %}Largest scoring disagreements outside the top 200.
+          {% else %}Full remaining corpus after the ranked and wildcard lanes.
+          {% endif %}
+        </p>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="dashboard-section" aria-labelledby="latest-refresh-heading">
+  <div class="section-heading">
+    <div>
+      <h2 id="latest-refresh-heading">Latest refresh</h2>
+      <p>Status and output from the most recent completed run.</p>
+    </div>
+  </div>
+  {% if last_refresh %}
+    {% set refresh_has_error = last_refresh['status'] == 'failure' or last_refresh['error'] %}
+    {% set refresh_has_warning = last_refresh['status'] == 'partial' or last_refresh['endpoint_error'] %}
+    {% if refresh_has_error %}{% set refresh_tone = 'error' %}{% elif refresh_has_warning %}{% set refresh_tone = 'warning' %}{% else %}{% set refresh_tone = 'success' %}{% endif %}
+    <article class="refresh-notification refresh-notification--{{ refresh_tone }}" role="{% if refresh_has_error %}alert{% else %}status{% endif %}" aria-labelledby="refresh-status-heading">
+      <div class="refresh-notification__icon" aria-hidden="true">
+        {% if refresh_tone == 'error' %}
+          <svg viewBox="0 0 20 20"><path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm0 1a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15Zm-.5 3h1v6h-1v-6Zm0 7.5h1v1.5h-1V13Z"/></svg>
+        {% elif refresh_tone == 'warning' %}
+          <svg viewBox="0 0 20 20"><path d="M9.1 2.2a1 1 0 0 1 1.8 0l7.7 14.1a1 1 0 0 1-.9 1.5H2.3a1 1 0 0 1-.9-1.5L9.1 2.2Zm.9.5L2.3 16.8h15.4L10 2.7Zm-.5 4.1h1v5.7h-1V6.8Zm0 7.1h1v1.5h-1v-1.5Z"/></svg>
+        {% else %}
+          <svg viewBox="0 0 20 20"><path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm0 1a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15Zm3.6 4.2.7.7-5.2 5.2-2.8-2.8.7-.7 2.1 2.1 4.5-4.5Z"/></svg>
+        {% endif %}
+      </div>
+      <div class="refresh-notification__body">
+        <div class="refresh-notification__heading">
+          <div>
+            <p class="refresh-notification__type">{{ last_refresh['run_type']|title }} run</p>
+            <h3 id="refresh-status-heading">{% if last_refresh['status'] == 'failure' %}Run failed{% elif last_refresh['status'] == 'partial' %}Completed with partial results{% elif last_refresh['endpoint_error'] %}Completed with an endpoint warning{% else %}Completed successfully{% endif %}</h3>
+          </div>
+          <span class="tag tag--state tag--{{ refresh_tone }}">{{ last_refresh['status']|title }}</span>
+        </div>
+        <p class="refresh-notification__timestamp">
+          Started <time datetime="{{ last_refresh['started_at'] }}">{{ last_refresh['started_at'] }}</time>{% if last_refresh['completed_at'] %}<span aria-hidden="true"> · </span>Completed <time datetime="{{ last_refresh['completed_at'] }}">{{ last_refresh['completed_at'] }}</time>{% endif %}
+        </p>
+        <dl class="refresh-facts">
+          <div><dt>Fetched</dt><dd>{{ last_refresh['total_fetched'] }}</dd></div>
+          <div><dt>Source-scored</dt><dd>{{ last_refresh['total_source_scored'] }}</dd></div>
+          <div><dt>New</dt><dd>{{ last_refresh['new_ads'] }}</dd></div>
+          <div><dt>Updated</dt><dd>{{ last_refresh['updated_ads'] }}</dd></div>
+          <div><dt>Preference-scored</dt><dd>{{ last_refresh['preference_scored'] }}</dd></div>
+          <div><dt>Four-signal</dt><dd>{{ last_refresh['four_signal_count'] }}</dd></div>
+          <div><dt>Fallback</dt><dd>{{ last_refresh['fallback_count'] }}</dd></div>
+          <div><dt>Active snapshot</dt><dd>{{ last_refresh['active_count'] }}</dd></div>
+          <div><dt>Canonical ranked</dt><dd>{{ last_refresh['canonical_count'] }}</dd></div>
+          <div><dt>Source embedding</dt><dd>{% if last_refresh['source_embedding_available'] %}Available{% else %}Unavailable{% endif %}</dd></div>
+        </dl>
+        {% if last_refresh['endpoint_error'] %}
+          <div class="refresh-notification__message"><strong>Embedding endpoint</strong><span>{{ last_refresh['endpoint_error'] }}</span></div>
+        {% endif %}
+        {% if last_refresh['error'] %}
+          <div class="refresh-notification__message"><strong>Run error</strong><span>{{ last_refresh['error'] }}</span></div>
+        {% endif %}
+      </div>
+    </article>
+  {% else %}
+    <div class="panel empty-state">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3a13 13 0 1 0 13 13A13 13 0 0 0 16 3Zm0 25a12 12 0 1 1 12-12 12 12 0 0 1-12 12Zm-.5-18h1v7h-1v-7Zm0 9h1v2h-1v-2Z"/></svg>
+      <h3>No completed refresh yet</h3>
+      <p>Refresh status and scoring details will appear after the first run completes.</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="dashboard-section" aria-labelledby="human-pipeline-heading">
+  <div class="section-heading">
+    <div>
+      <h2 id="human-pipeline-heading">Human pipeline</h2>
+      <p>All-time current-state counts across the full stored corpus, including expired ads.</p>
+    </div>
+  </div>
+  <div class="state-grid">
+    {% for state in ('unread','saved','applied','interview','offer','closed','dismissed') %}
+      {% set count = state_counts[state] %}
+      {% if state == 'unread' %}
+        <div class="state-tile state-tile--static">
+          <span class="state-tile__label">{{ state|title }}</span>
+          <strong class="state-tile__count">{{ count }}</strong>
+          <span class="state-tile__scope">All-time current state</span>
+        </div>
+      {% else %}
+        <a class="state-tile" href="{{ url_for('state_view', state=state) }}">
+          <span class="state-tile__label">{{ state|title }}</span>
+          <strong class="state-tile__count">{{ count }}</strong>
+          <span class="state-tile__scope">All-time current state</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m9.3 2.3 5 5a1 1 0 0 1 0 1.4l-5 5-.7-.7 4.5-4.5H2v-1h11.1L8.6 3l.7-.7Z"/></svg>
+        </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
 {% endblock %}

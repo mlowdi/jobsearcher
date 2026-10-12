@@ -1,35 +1,129 @@
 {% extends "workspace_base.html" %}
 {% block title %}{{ heading }} · Jobsearcher{% endblock %}
 {% block content %}
-<h1>{{ heading }}</h1>
-<p class="muted">{{ total }} result{% if total != 1 %}s{% endif %}</p>
-<form class="filters" method="get">
-  {% if lane %}<label>State
-    <select name="state">
-      {% for value in ('unread','all','saved','dismissed','applied','interview','offer','closed') %}<option value="{{ value }}"{% if value == selected_state %} selected{% endif %}>{{ value|title }}</option>{% endfor %}
+<header class="page-header">
+  <p class="eyebrow">{% if lane %}Ranked inbox{% else %}State view{% endif %}</p>
+  <h1>{{ heading }}</h1>
+  <p class="page-intro">
+    {{ total }} result{% if total != 1 %}s{% endif %}.
+    {% if lane %}
+      Review the frozen {{ lane }} lane, then save or dismiss each job from its detail page.
+    {% else %}
+      State views retain jobs even after their application deadline has passed.
+    {% endif %}
+  </p>
+</header>
+
+<form class="filters" method="get" aria-label="Filter and sort jobs">
+  {% if lane %}
+    <div class="field">
+      <label for="list-state">State</label>
+      <select id="list-state" name="state">
+        {% for value in ('unread','all','saved','dismissed','applied','interview','offer','closed') %}
+          <option value="{{ value }}"{% if value == selected_state %} selected{% endif %}>{{ value|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  {% endif %}
+  <div class="field">
+    <label for="list-sort">Sort by</label>
+    <select id="list-sort" name="sort">
+      {% for value in ('frozen-rank','newest','deadline') %}
+        <option value="{{ value }}"{% if value == selected_sort %} selected{% endif %}>{{ value|replace('-', ' ')|title }}</option>
+      {% endfor %}
     </select>
-  </label>{% endif %}
-  <label>Sort
-    <select name="sort">
-      {% for value in ('frozen-rank','newest','deadline') %}<option value="{{ value }}"{% if value == selected_sort %} selected{% endif %}>{{ value|replace('-', ' ')|title }}</option>{% endfor %}
-    </select>
-  </label>
-  <button type="submit">Apply</button>
+  </div>
+  <button class="button button--secondary" type="submit">Apply</button>
 </form>
-{% for ad in rows %}
-<article class="card job">
-  <h2><a href="{{ url_for('ad_detail', ad_id=ad['id']) }}">{{ ad['headline'] }}</a></h2>
-  <div>{{ ad['employer'] }} · {{ ad['municipality'] or ad['region'] }}</div>
-  {% if ad['lane'] %}<span class="pill">{{ ad['lane'] }} #{{ ad['lane_rank'] }}</span>{% endif %}
-  <span class="pill">{{ ad['current_state'] }}</span>
-  {% if ad['scoring_mode'] %}<span class="pill score">{{ ad['scoring_mode'] }} {{ '%.3f'|format(ad['ensemble_score']) }}</span>{% endif %}
-  {% if ad['duplicate_count'] and ad['duplicate_count'] > 1 %}<span class="pill">{{ ad['duplicate_count'] }} exact copies</span>{% endif %}
-  <div class="muted">Published {{ ad['publication_date'] }} · deadline {{ ad['application_deadline'] }}</div>
-</article>
-{% else %}<section class="card muted">Nothing in this view.</section>{% endfor %}
-<nav class="pager" aria-label="Pagination">
-  {% if page > 1 %}<a href="?{% if lane %}state={{ selected_state }}&{% endif %}sort={{ selected_sort }}&page={{ page - 1 }}">Previous</a>{% endif %}
-  <span>Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a href="?{% if lane %}state={{ selected_state }}&{% endif %}sort={{ selected_sort }}&page={{ page + 1 }}">Next</a>{% endif %}
+
+{% if rows %}
+  <section class="panel job-list" aria-label="{{ heading }} results">
+    {% for ad in rows %}
+      <article class="job-row">
+        <div class="job-rank">
+          <span class="eyebrow">Rank</span>
+          {% if ad['lane'] %}
+            <strong>#{{ ad['lane_rank'] }}</strong>
+          {% else %}
+            <span class="muted">Not ranked</span>
+          {% endif %}
+        </div>
+
+        <div class="job-main">
+          <h2 class="job-title">
+            <a href="{{ url_for('ad_detail', ad_id=ad['id']) }}">{{ ad['headline'] or 'Untitled job' }}</a>
+          </h2>
+          <p class="job-meta">
+            <strong>{{ ad['employer'] or 'Employer not specified' }}</strong>
+            <span aria-hidden="true"> · </span>
+            {{ ad['municipality'] or ad['region'] or 'Location not specified' }}
+          </p>
+          <div class="job-meta" aria-label="Job status and ranking metadata">
+            {% if ad['lane'] %}<span class="tag tag--lane">{{ ad['lane']|title }} lane</span>{% endif %}
+            <span class="tag tag--state">{{ ad['current_state']|title }}</span>
+            {% if ad['scoring_mode'] %}
+              <span class="tag"><span class="mono">{{ ad['scoring_mode'] }}</span>&nbsp;score&nbsp;<span class="mono">{{ '%.3f'|format(ad['ensemble_score']) }}</span></span>
+            {% endif %}
+            {% if ad['duplicate_count'] and ad['duplicate_count'] > 1 %}
+              <span class="tag">{{ ad['duplicate_count'] }} exact copies</span>
+            {% endif %}
+          </div>
+          <p class="job-meta">
+            Published
+            {% if ad['publication_date'] %}<time datetime="{{ ad['publication_date'] }}">{{ ad['publication_date'] }}</time>{% else %}not specified{% endif %}
+          </p>
+        </div>
+
+        <div class="job-deadline">
+          <span class="eyebrow">Deadline</span>
+          {% if ad['application_deadline'] %}
+            <time datetime="{{ ad['application_deadline'] }}">{{ ad['application_deadline'] }}</time>
+          {% else %}
+            <span class="muted">Not specified</span>
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+{% else %}
+  <section class="panel empty-state" aria-labelledby="empty-heading">
+    {% if lane and selected_state != 'all' %}
+      <h2 id="empty-heading">No {{ selected_state }} jobs in this lane</h2>
+      <p>Try all states to find jobs you have already reviewed.</p>
+      <a class="button button--secondary" href="{{ url_for('inbox', lane=lane, state='all', sort=selected_sort) }}">Show all states</a>
+    {% elif lane %}
+      <h2 id="empty-heading">This ranked lane is empty</h2>
+      <p>Jobs will appear here after a refresh produces a current lane snapshot.</p>
+      <a class="button button--ghost" href="{{ url_for('dashboard') }}">Back to dashboard</a>
+    {% else %}
+      <h2 id="empty-heading">No {{ selected_state }} jobs yet</h2>
+      <p>Open a ranked lane and save a state when a job reaches this stage.</p>
+      <a class="button button--secondary" href="{{ url_for('dashboard') }}">Browse ranked lanes</a>
+    {% endif %}
+  </section>
+{% endif %}
+
+<nav class="pagination" aria-label="Pagination">
+  {% if page > 1 %}
+    {% if lane %}
+      <a class="button button--ghost" rel="prev" href="{{ url_for('inbox', lane=lane, state=selected_state, sort=selected_sort, page=page - 1) }}">Previous</a>
+    {% else %}
+      <a class="button button--ghost" rel="prev" href="{{ url_for('state_view', state=state_view, sort=selected_sort, page=page - 1) }}">Previous</a>
+    {% endif %}
+  {% else %}
+    <button class="button button--ghost" type="button" disabled>Previous</button>
+  {% endif %}
+
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+
+  {% if page < pages %}
+    {% if lane %}
+      <a class="button button--ghost" rel="next" href="{{ url_for('inbox', lane=lane, state=selected_state, sort=selected_sort, page=page + 1) }}">Next</a>
+    {% else %}
+      <a class="button button--ghost" rel="next" href="{{ url_for('state_view', state=state_view, sort=selected_sort, page=page + 1) }}">Next</a>
+    {% endif %}
+  {% else %}
+    <button class="button button--ghost" type="button" disabled>Next</button>
+  {% endif %}
 </nav>
 {% endblock %}
